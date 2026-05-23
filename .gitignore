@@ -10,10 +10,11 @@ __pycache__/
 venv/
 *.egg-info/
 
-# Secrets
+# Secrets en lokale config
 .env
 secrets.yaml
 config/secrets.yaml
+config.yaml
 
 # OS
 .DS_Store

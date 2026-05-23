@@ -17,17 +17,16 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict
 
-LATITUDE = 52.09
-LONGITUDE = 5.23
+from config_loader import laad_config
 
-DAKVLAKKEN = [
-    {"naam": "ZO", "kwp": 2.58, "azimuth": -45,  "tilt": 35},
-    {"naam": "NO", "kwp": 1.29, "azimuth": -135, "tilt": 35},
-]
+_cfg = laad_config()
+LATITUDE  = _cfg["locatie"]["latitude"]
+LONGITUDE = _cfg["locatie"]["longitude"]
+DAKVLAKKEN = _cfg["panelen"]
 
 FORECAST_SOLAR_BASE = "https://api.forecast.solar/estimate"
-CACHE_DIR = Path(__file__).parent.parent / "data" / "cache"
-CACHE_MAX_OUD = timedelta(hours=1)
+CACHE_DIR   = Path(__file__).parent.parent / _cfg["cache"]["pad"]
+CACHE_MAX_OUD = timedelta(minutes=_cfg["cache"]["max_oud_minuten"])
 
 
 def _haal_api(kwp: float, tilt: int, azimuth: int) -> dict:
