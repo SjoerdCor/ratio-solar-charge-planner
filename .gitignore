@@ -1,0 +1,24 @@
+# Cache en data
+data/cache/*.json
+data/*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Secrets
+.env
+secrets.yaml
+config/secrets.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

@@ -1,0 +1,15 @@
+# HTTP
+requests>=2.31.0
+
+# Data / berekening
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Visualisatie
+matplotlib>=3.7.0
+
+# YAML parsing
+pyyaml>=6.0
+
+# AppDaemon (alleen op de HA-host nodig)
+# appdaemon>=4.4.0

@@ -1,0 +1,34 @@
+# Kopieer dit bestand naar config.yaml en vul je eigen waarden in.
+# config.yaml staat in .gitignore en wordt nooit gecommit.
+
+locatie:
+  latitude: 52.09
+  longitude: 5.23
+  tijdzone: "Europe/Amsterdam"
+
+panelen:
+  - naam: ZO
+    kwp: 2.58
+    azimuth: -45    # t.o.v. noord, negatief = oost
+    tilt: 35
+    aantal: 6
+  - naam: NO
+    kwp: 1.29
+    azimuth: -135
+    tilt: 35
+    aantal: 3
+
+auto:
+  accu_kwh: 77
+  verbruik_kwh_per_jaar: 1200
+
+tibber:
+  token: "JOUW_TIBBER_TOKEN_HIER"
+
+vast_tarief:
+  dag_ct_per_kwh: 0.00    # invullen
+  nacht_ct_per_kwh: 0.00  # invullen
+
+cache:
+  pad: "data/cache"
+  max_oud_minuten: 60

@@ -1,0 +1,23 @@
+# Voeg toe aan configuration.yaml of gebruik de HA UI
+
+input_number:
+  laad_doel:
+    name: Laaddoel (%)
+    min: 20
+    max: 100
+    step: 5
+    initial: 80
+    unit_of_measurement: "%"
+    icon: mdi:battery-charging-80
+
+input_datetime:
+  laad_klaar_om:
+    name: Auto klaar om
+    has_date: true
+    has_time: true
+    # Standaard: volgend weekend 10:00 — stel in via UI of automatisering
+
+  auto_nodig_op:
+    name: Auto nodig op
+    has_date: true
+    has_time: true
