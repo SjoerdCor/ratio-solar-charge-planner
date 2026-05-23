@@ -10,7 +10,8 @@ from datetime import datetime
 from solar_forecast import haal_dakvlak_uurwaarden, DAKVLAKKEN
 
 def plot_voorspelling():
-    fig, ax = plt.subplots(figsize=(12, 5))
+    """Plot per-periode zonneopwek per dakvlak voor vandaag en morgen."""
+    _, ax = plt.subplots(figsize=(12, 5))
     totaal: dict = {}
 
     kleuren = {"ZO": "#f5a623", "NO": "#4a90e2"}
@@ -34,7 +35,7 @@ def plot_voorspelling():
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     ax.set_xlabel("Tijd")
-    ax.set_ylabel("Wh per uur")
+    ax.set_ylabel("Wh per periode")
     ax.set_title("Zonnepredictie vandaag — Zeist")
     ax.legend()
     ax.grid(True, alpha=0.3)
