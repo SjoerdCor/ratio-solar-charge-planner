@@ -8,11 +8,13 @@ Forecast.Solar azimutconventie: 0=south, negatief=oost, positief=west.
   ZO (zuidoost) → az=-45, NO (noordoost) → az=-135
 
 Gratis API: max 12 requests/uur.
-Stap 1 (TODO): caching naar schijf toevoegen + OpenMeteo voor dag 2-7.
+Stap 1 (TODO): OpenMeteo toevoegen voor dag 2-7.
 """
 
+import json
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict
 
 LATITUDE = 52.09
@@ -24,20 +26,29 @@ DAKVLAKKEN = [
 ]
 
 FORECAST_SOLAR_BASE = "https://api.forecast.solar/estimate"
-
-# In-memory cache zodat meerdere functies binnen één run niet dubbel fetchen.
-_api_cache: Dict[str, dict] = {}
+CACHE_DIR = Path(__file__).parent.parent / "data" / "cache"
+CACHE_MAX_OUD = timedelta(hours=1)
 
 
 def _haal_api(kwp: float, tilt: int, azimuth: int) -> dict:
-    """Fetch ruwe API-response voor één dakvlak (gecached per run)."""
-    sleutel = f"{kwp}_{tilt}_{azimuth}"
-    if sleutel not in _api_cache:
-        url = f"{FORECAST_SOLAR_BASE}/{LATITUDE}/{LONGITUDE}/{tilt}/{azimuth}/{kwp}"
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        _api_cache[sleutel] = resp.json()["result"]
-    return _api_cache[sleutel]
+    """Fetch ruwe API-response voor één dakvlak. Gebruikt schijfcache (max 1 uur oud)."""
+    cache_bestand = CACHE_DIR / f"forecast_{tilt}_{azimuth}_{kwp}.json"
+    if cache_bestand.exists():
+        opgeslagen = json.loads(cache_bestand.read_text(encoding="utf-8"))
+        leeftijd = datetime.now() - datetime.fromisoformat(opgeslagen["opgeslagen_op"])
+        if leeftijd < CACHE_MAX_OUD:
+            return opgeslagen["result"]
+
+    url = f"{FORECAST_SOLAR_BASE}/{LATITUDE}/{LONGITUDE}/{tilt}/{azimuth}/{kwp}"
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    result = resp.json()["result"]
+
+    cache_bestand.write_text(
+        json.dumps({"opgeslagen_op": datetime.now().isoformat(), "result": result}),
+        encoding="utf-8",
+    )
+    return result
 
 
 def haal_dakvlak_uurwaarden(kwp: float, tilt: int, azimuth: int) -> Dict[str, float]:
