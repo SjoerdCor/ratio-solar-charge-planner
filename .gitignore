@@ -13,8 +13,7 @@ venv/
 # Secrets en lokale config
 .env
 secrets.yaml
-config/secrets.yaml
-config.yaml
+appdaemon/apps/apps.yaml
 
 # OS
 .DS_Store

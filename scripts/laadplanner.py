@@ -1,78 +1,102 @@
 """
 laadplanner.py
 ==============
-CLI-wrapper voor de rolling-horizon laadplanner.
+CLI wrapper for the rolling-horizon charge planner.
 
-Gebruik:
+Usage:
   uv run python scripts/laadplanner.py
-  uv run python scripts/laadplanner.py --soc 25 --doel 80 --dagen 7
+  uv run python scripts/laadplanner.py --soc 25 --target 80 --days 7
 """
 
 import argparse
+import logging
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List
 
-sys.path.insert(0, str(Path(__file__).parent))
-from config_loader import laad_config
-from optimizer import bouw_kandidaten, selecteer_uren
-from solar_forecast import haal_uurwaarden
+import yaml
 
-_cfg = laad_config()
-ACCU_KWH             = _cfg["auto"]["accu_kwh"]
-LAADVERMOGEN_SMART_W = _cfg["auto"]["laadvermogen_smart_w"]
-NACHT_CT             = _cfg["vast_tarief"]["nacht_ct_per_kwh"]
-DAG_CT               = _cfg["vast_tarief"]["dag_ct_per_kwh"]
+_ROOT = Path(__file__).parent.parent
+_AD   = _ROOT / "appdaemon" / "apps" / "laadplanner"
+sys.path.insert(0, str(_AD))
+
+import solar_forecast
+from optimizer import build_candidates, select_slots
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+log = logging.getLogger(__name__)
 
 
-def druk_af(gekozen: List[dict], soc_start: float, soc_doel: float, deadline: datetime):
-    """Print het laadplan naar stdout."""
-    kwh_nodig  = (soc_doel - soc_start) / 100 * ACCU_KWH
-    kwh_gepland = sum(k["laad_kwh"] for k in gekozen)
-    n_uren = len(gekozen)
+def _load_config() -> dict:
+    path = _ROOT / "appdaemon" / "apps" / "apps.yaml"
+    if not path.exists():
+        raise FileNotFoundError(
+            "appdaemon/apps/apps.yaml not found — copy apps.yaml.example and fill it in."
+        )
+    return yaml.safe_load(path.read_text(encoding="utf-8"))["laadplanner"]
 
-    deadline_str = deadline.strftime("%a %d %b %H:%M")
-    print(f"Laadplan  SOC {soc_start:.0f}% -> {soc_doel:.0f}%  |  deadline {deadline_str}")
-    print(f"Te laden  {kwh_nodig:.1f} kWh  |  gepland {kwh_gepland:.1f} kWh  |  {n_uren} uren")
+
+_cfg = _load_config()
+solar_forecast.configure(
+    latitude=_cfg["location"]["latitude"],
+    longitude=_cfg["location"]["longitude"],
+    roof_planes=_cfg["panels"],
+    cache_dir=_ROOT / "data" / "cache",
+)
+
+BATTERY_KWH       = _cfg["vehicle"]["battery_kwh"]
+CHARGING_POWER_KW = _cfg["vehicle"]["charging_power_kw"]
+NIGHT_RATE        = _cfg["fixed_rate"]["night_rate_ct"]
+DAY_RATE          = _cfg["fixed_rate"]["day_rate_ct"]
+
+
+def print_plan(selected: List[dict], soc_start: float, soc_target: float, deadline: datetime):
+    """Print the charge plan as a formatted table."""
+    energy_needed  = (soc_target - soc_start) / 100 * BATTERY_KWH
+    energy_planned = sum(s["energy_kwh"] for s in selected)
+
+    print(f"Charge plan  SoC {soc_start:.0f}% -> {soc_target:.0f}%  |  deadline {deadline:%a %d %b %H:%M}")
+    print(f"Needed  {energy_needed:.1f} kWh  |  planned {energy_planned:.1f} kWh  |  {len(selected)} slots")
     print()
-    print(f"  {'Tijdstip':<18} {'Modus':<12} {'Prijs':>9}  {'kWh':>6}  {'SOC':>5}")
+    print(f"  {'Time':<18} {'Mode':<12} {'Rate':>9}  {'kWh':>6}  {'SoC':>5}")
     print(f"  {'-'*18} {'-'*12} {'-'*9}  {'-'*6}  {'-'*5}")
 
     soc = soc_start
-    for k in gekozen:
-        soc = min(soc_doel, soc + k["laad_kwh"] / ACCU_KWH * 100)
+    for s in selected:
+        soc = min(soc_target, soc + s["energy_kwh"] / BATTERY_KWH * 100)
         print(
-            f"  {k['tijdstip'].strftime('%a %d %b  %H:%M'):<18}"
-            f" {k['modus']:<12}"
-            f" {k['effectieve_prijs']:>7.1f} ct"
-            f"  {k['laad_kwh']:>5.1f}"
+            f"  {s['slot'].strftime('%a %d %b  %H:%M'):<18}"
+            f" {s['mode']:<12}"
+            f" {s['effective_price']:>7.1f} ct"
+            f"  {s['energy_kwh']:>5.1f}"
             f"  {soc:>4.0f}%"
         )
 
 
 def main():
-    """CLI-ingangspunt voor de laadplanner."""
-    parser = argparse.ArgumentParser(description="Simpele laadplanner")
-    parser.add_argument("--soc",   type=float, default=25.0, help="Huidige SOC (%)")
-    parser.add_argument("--doel",  type=float, default=80.0, help="Doel SOC (%)")
-    parser.add_argument("--dagen", type=float, default=7.0,  help="Deadline over N dagen")
+    """CLI entry point for the charge planner."""
+    parser = argparse.ArgumentParser(description="Rolling-horizon charge planner")
+    parser.add_argument("--soc",    type=float, default=25.0, help="Current SoC (%)")
+    parser.add_argument("--target", type=float, default=80.0, help="Target SoC (%)")
+    parser.add_argument("--days",   type=float, default=7.0,  help="Deadline in N days")
     args = parser.parse_args()
 
-    deadline  = datetime.now() + timedelta(days=args.dagen)
-    kwh_nodig = (args.doel - args.soc) / 100 * ACCU_KWH
+    deadline      = datetime.now() + timedelta(days=args.days)
+    energy_needed = (args.target - args.soc) / 100 * BATTERY_KWH
 
-    print("Zonnepredictie ophalen...")
-    solar = haal_uurwaarden()
-    bereik = f"{min(solar)} t/m {max(solar)}" if solar else "-"
-    print(f"  {len(solar)} periodes beschikbaar ({bereik})")
-    print()
+    log.info("Fetching solar forecast...")
+    forecast = solar_forecast.fetch_forecast()
+    if forecast:
+        log.info("  %d periods available (%s to %s)", len(forecast), min(forecast), max(forecast))
+    else:
+        log.info("  No forecast data available")
 
-    kandidaten = bouw_kandidaten(
-        datetime.now(), deadline, solar, LAADVERMOGEN_SMART_W, NACHT_CT, DAG_CT
+    candidates = build_candidates(
+        datetime.now(), deadline, forecast, CHARGING_POWER_KW, NIGHT_RATE, DAY_RATE
     )
-    gekozen = selecteer_uren(kandidaten, kwh_nodig)
-    druk_af(gekozen, args.soc, args.doel, deadline)
+    selected = select_slots(candidates, energy_needed)
+    print_plan(selected, args.soc, args.target, deadline)
 
 
 if __name__ == "__main__":

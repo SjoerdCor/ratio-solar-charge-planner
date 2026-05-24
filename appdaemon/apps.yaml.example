@@ -1,20 +1,34 @@
-# Kopieer naar apps.yaml op de HA-host en vul serienummers in.
-# apps.yaml staat NIET in de git-repo (bevat serienummers).
+# Copy to appdaemon/apps/apps.yaml on the HA host and fill in serial numbers.
+# apps.yaml is listed in .gitignore and will never be committed.
 
 laadplanner:
   module: laadplanner_app
-  class: LaadPlanner
+  class: ChargeScheduler
 
-  entiteiten:
-    soc_sensor:       "sensor.volkswagen_JOUW_SERIAL_state_of_charge"
-    laadmodus_select: "select.ratio_JOUW_SERIAL_charge_mode"
-    laad_doel:        "input_number.laad_doel"
-    laad_klaar_om:    "input_datetime.laad_klaar_om"
+  location:
+    latitude: 52.09
+    longitude: 5.23
 
-  auto:
-    accu_kwh: 77
-    laadvermogen_smart_w: 11000
+  panels:
+    - name: SE
+      kwp: 2.58
+      azimuth: -45
+      tilt: 35
+    - name: NE
+      kwp: 1.29
+      azimuth: -135
+      tilt: 35
 
-  vast_tarief:
-    dag_ct_per_kwh:   27.0   # 06:00–22:00
-    nacht_ct_per_kwh: 23.0   # 22:00–06:00
+  entities:
+    soc_sensor:         "sensor.volkswagen_YOUR_SERIAL_state_of_charge"
+    charge_mode_select: "select.ratio_YOUR_SERIAL_charge_mode"
+    charge_target:      "input_number.laad_doel"
+    charge_by:          "input_datetime.laad_klaar_om"
+
+  vehicle:
+    battery_kwh: 77
+    charging_power_kw: 11.0
+
+  fixed_rate:
+    day_rate_ct:   27.0   # 06:00–22:00
+    night_rate_ct: 23.0   # 22:00–06:00

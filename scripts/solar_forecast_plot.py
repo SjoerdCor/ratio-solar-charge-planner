@@ -1,46 +1,75 @@
 """
 solar_forecast_plot.py
 ======================
-Matplotlib visualisatie van de zonnepredictie per dakvlak.
+Matplotlib visualisation of the solar forecast per roof plane.
 """
 
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+import sys
 from datetime import datetime
-from solar_forecast import haal_dakvlak_uurwaarden, DAKVLAKKEN
+from pathlib import Path
 
-def plot_voorspelling():
-    """Plot per-periode zonneopwek per dakvlak voor vandaag en morgen."""
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import yaml
+
+_ROOT = Path(__file__).parent.parent
+_AD   = _ROOT / "appdaemon" / "apps" / "laadplanner"
+sys.path.insert(0, str(_AD))
+
+import solar_forecast
+from solar_forecast import fetch_roof_plane_forecast
+
+
+def _load_config() -> dict:
+    path = _ROOT / "appdaemon" / "apps" / "apps.yaml"
+    if not path.exists():
+        raise FileNotFoundError(
+            "appdaemon/apps/apps.yaml not found — copy apps.yaml.example and fill it in."
+        )
+    return yaml.safe_load(path.read_text(encoding="utf-8"))["laadplanner"]
+
+
+_cfg = _load_config()
+solar_forecast.configure(
+    latitude=_cfg["location"]["latitude"],
+    longitude=_cfg["location"]["longitude"],
+    roof_planes=_cfg["panels"],
+    cache_dir=_ROOT / "data" / "cache",
+)
+
+
+def plot_forecast():
+    """Plot per-period solar production per roof plane for today and tomorrow."""
     _, ax = plt.subplots(figsize=(12, 5))
-    totaal: dict = {}
+    total: dict = {}
 
-    kleuren = {"ZO": "#f5a623", "NO": "#4a90e2"}
+    colours = {"SE": "#f5a623", "NE": "#4a90e2"}
 
-    for vlak in DAKVLAKKEN:
-        data = haal_dakvlak_uurwaarden(vlak["kwp"], vlak["tilt"], vlak["azimuth"])
-        tijden = [datetime.strptime(t, "%Y-%m-%d %H:%M:%S") for t in data]
-        waarden = list(data.values())
+    for plane in _cfg["panels"]:
+        data = fetch_roof_plane_forecast(plane["kwp"], plane["tilt"], plane["azimuth"])
+        times  = [datetime.strptime(ts, "%Y-%m-%d %H:%M:%S") for ts in data]
+        values = [kwh * 1000 for kwh in data.values()]  # display as Wh for readability
 
-        ax.plot(tijden, waarden, label=vlak["naam"],
-                color=kleuren.get(vlak["naam"], "gray"), linewidth=2)
+        ax.plot(times, values, label=plane["name"],
+                color=colours.get(plane["name"], "gray"), linewidth=2)
 
-        for t, w in zip(tijden, waarden):
+        for t, wh in zip(times, values):
             ts = t.strftime("%Y-%m-%d %H:%M:%S")
-            totaal[ts] = totaal.get(ts, 0) + w
+            total[ts] = total.get(ts, 0.0) + wh
 
-    # Totaallijn
-    t_tot = [datetime.strptime(t, "%Y-%m-%d %H:%M:%S") for t in sorted(totaal)]
-    w_tot = [totaal[t] for t in sorted(totaal)]
-    ax.plot(t_tot, w_tot, label="Totaal", color="green", linewidth=2.5, linestyle="--")
+    t_total = [datetime.strptime(ts, "%Y-%m-%d %H:%M:%S") for ts in sorted(total)]
+    w_total = [total[ts] for ts in sorted(total)]
+    ax.plot(t_total, w_total, label="Total", color="green", linewidth=2.5, linestyle="--")
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    ax.set_xlabel("Tijd")
-    ax.set_ylabel("Wh per periode")
-    ax.set_title("Zonnepredictie vandaag — Zeist")
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Wh per period")
+    ax.set_title("Solar forecast — Zeist")
     ax.legend()
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.show()
 
+
 if __name__ == "__main__":
-    plot_voorspelling()
+    plot_forecast()
