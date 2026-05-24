@@ -16,7 +16,7 @@ from pathlib import Path
 
 import appdaemon.plugins.hass.hassapi as hass
 
-import solar_forecast
+from . import solar_forecast
 from optimizer import build_candidates, mode_for_current_slot, select_slots
 
 REPLAN_INTERVAL_S = 3600  # rebuild the plan every hour
@@ -38,17 +38,17 @@ class ChargeScheduler(hass.Hass):
     def initialize(self):
         """Register listeners and schedule the first plan build."""
         entities = self.args["entities"]
-        self.soc_sensor        = entities["soc_sensor"]
+        self.soc_sensor = entities["soc_sensor"]
         self.charge_mode_select = entities["charge_mode_select"]
         self.charge_target_entity = entities["charge_target"]
-        self.charge_by_entity  = entities["charge_by"]
+        self.charge_by_entity = entities["charge_by"]
 
         vehicle = self.args["vehicle"]
-        self.battery_kwh       = float(vehicle["battery_kwh"])
+        self.battery_kwh = float(vehicle["battery_kwh"])
         self.charging_power_kw = float(vehicle["charging_power_kw"])
 
         rate = self.args["fixed_rate"]
-        self.day_rate   = float(rate["day_rate_ct"])
+        self.day_rate = float(rate["day_rate_ct"])
         self.night_rate = float(rate["night_rate_ct"])
 
         loc = self.args["location"]
@@ -67,8 +67,8 @@ class ChargeScheduler(hass.Hass):
 
     def _replan(self, *_args, **_kwargs):
         """Rebuild the charge plan and set the mode for the current hour."""
-        soc      = self._read_soc()
-        target   = self._read_charge_target()
+        soc = self._read_soc()
+        target = self._read_charge_target()
         deadline = self._read_deadline()
 
         if soc is None or target is None or deadline is None:
@@ -87,8 +87,12 @@ class ChargeScheduler(hass.Hass):
             forecast = {}
 
         candidates = build_candidates(
-            datetime.now(), deadline, forecast,
-            self.charging_power_kw, self.night_rate, self.day_rate,
+            datetime.now(),
+            deadline,
+            forecast,
+            self.charging_power_kw,
+            self.night_rate,
+            self.day_rate,
         )
         selected = select_slots(candidates, energy_needed_kwh)
         mode = mode_for_current_slot(selected)
