@@ -17,7 +17,7 @@ from pathlib import Path
 import appdaemon.plugins.hass.hassapi as hass
 
 from . import solar_forecast
-from optimizer import build_candidates, mode_for_current_slot, select_slots
+from .optimizer import build_candidates, mode_for_current_slot, select_slots
 
 REPLAN_INTERVAL_S = 3600  # rebuild the plan every hour
 
