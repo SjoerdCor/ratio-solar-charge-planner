@@ -2,7 +2,7 @@
 # apps.yaml is listed in .gitignore and will never be committed.
 
 laadplanner:
-  module: laadplanner_app
+  module: laadplanner.laadplanner_app
   class: ChargeScheduler
 
   location:
