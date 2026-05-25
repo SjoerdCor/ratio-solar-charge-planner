@@ -105,18 +105,22 @@ class ChargeScheduler(hass.Hass):
 
     def _read_soc(self):
         """Read current SoC from the VW sensor (%)."""
+        self.log(f"SOC sensor entity ID: {self.soc_sensor!r}")
         value = self.get_state(self.soc_sensor)
         if value in (None, "unavailable", "unknown"):
+            self.log("Failed reading SOC", level="WARNING")
             return None
         try:
             return float(value)
         except ValueError:
+            self.log(f"Could not convert soc to float: {value}", level="WARNING")
             return None
 
     def _read_charge_target(self):
         """Read desired target SoC from input_number (%)."""
         value = self.get_state(self.charge_target_entity)
         if value in (None, "unavailable", "unknown"):
+            self.log("Failed reading charge target", level="WARNING")
             return None
         try:
             return float(value)
@@ -127,6 +131,7 @@ class ChargeScheduler(hass.Hass):
         """Read charge deadline from input_datetime; fall back to 7 days from now."""
         value = self.get_state(self.charge_by_entity)
         if value in (None, "unavailable", "unknown"):
+            self.log("Setting deadline to default fallback")
             return datetime.now() + timedelta(days=7)
         try:
             return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
