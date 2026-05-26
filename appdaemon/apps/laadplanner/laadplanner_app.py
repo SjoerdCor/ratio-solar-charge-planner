@@ -77,6 +77,7 @@ class ChargeScheduler(hass.Hass):
                 f"Cannot build plan: soc={soc} target={target} deadline={deadline}",
                 level="WARNING",
             )
+            self._publish_status("Plan unavailable: could not read SoC, target or deadline")
             return
 
         energy_needed_kwh = (target - soc) / 100 * self.battery_kwh
@@ -87,6 +88,7 @@ class ChargeScheduler(hass.Hass):
 
         if energy_needed_kwh <= 0:
             self.log("Target already reached — switching to PureSolar")
+            self._publish_status(f"Target reached ({soc:.0f}% >= {target:.0f}%) — no charging needed")
             self._set_mode("PureSolar")
             return
 
@@ -139,10 +141,14 @@ class ChargeScheduler(hass.Hass):
             )
 
         plan_text = "\n".join(lines) if lines else "No charging slots planned"
+        self._publish_status(plan_text)
+
+    def _publish_status(self, text: str):
+        """Write a status message to sensor.laadplan."""
         self.set_state(
             "sensor.laadplan",
-            state=plan_text[:255],
-            attributes={"plan": plan_text, "friendly_name": "Laadplan"},
+            state=text[:255],
+            attributes={"plan": text, "friendly_name": "Laadplan"},
         )
 
     def _read_soc(self):
