@@ -121,7 +121,29 @@ class ChargeScheduler(hass.Hass):
             f"planned={sum(s['energy_kwh'] for s in selected):.1f} kWh  "
             f"current mode → {mode}"
         )
+        self._publish_plan(selected, soc, target)
         self._set_mode(mode)
+
+    def _publish_plan(self, selected: list, soc_start: float, soc_target: float):
+        """Write the charge plan to sensor.laadplan so it can be shown on the dashboard."""
+        running_soc = soc_start
+        lines = []
+        for s in selected:
+            running_soc = min(soc_target, running_soc + s["energy_kwh"] / self.battery_kwh * 100)
+            end = s["slot"] + timedelta(hours=1)
+            lines.append(
+                f"{s['slot'].strftime('%H:%M')}-{end.strftime('%H:%M')}"
+                f"  {s['mode']}"
+                f"  {s['effective_price']:.1f} ct"
+                f"  -> {running_soc:.0f}%"
+            )
+
+        plan_text = "\n".join(lines) if lines else "No charging slots planned"
+        self.set_state(
+            "sensor.laadplan",
+            state=plan_text[:255],
+            attributes={"plan": plan_text, "friendly_name": "Laadplan"},
+        )
 
     def _read_soc(self):
         """Read current SoC from the VW sensor (%)."""
