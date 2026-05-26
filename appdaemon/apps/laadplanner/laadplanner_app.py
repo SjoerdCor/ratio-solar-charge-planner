@@ -77,7 +77,9 @@ class ChargeScheduler(hass.Hass):
                 f"Cannot build plan: soc={soc} target={target} deadline={deadline}",
                 level="WARNING",
             )
-            self._publish_status("Plan unavailable: could not read SoC, target or deadline")
+            self._publish_status(
+                "Plan unavailable: could not read SoC, target or deadline"
+            )
             return
 
         energy_needed_kwh = (target - soc) / 100 * self.battery_kwh
@@ -88,7 +90,9 @@ class ChargeScheduler(hass.Hass):
 
         if energy_needed_kwh <= 0:
             self.log("Target already reached — switching to PureSolar")
-            self._publish_status(f"Target reached ({soc:.0f}% >= {target:.0f}%) — no charging needed")
+            self._publish_status(
+                f"Target reached ({soc:.0f}% >= {target:.0f}%) — no charging needed"
+            )
             self._set_mode("PureSolar")
             return
 
@@ -131,7 +135,9 @@ class ChargeScheduler(hass.Hass):
         running_soc = soc_start
         lines = []
         for s in selected:
-            running_soc = min(soc_target, running_soc + s["energy_kwh"] / self.battery_kwh * 100)
+            running_soc = min(
+                soc_target, running_soc + s["energy_kwh"] / self.battery_kwh * 100
+            )
             end = s["slot"] + timedelta(hours=1)
             lines.append(
                 f"{s['slot'].strftime('%H:%M')}-{end.strftime('%H:%M')}"
