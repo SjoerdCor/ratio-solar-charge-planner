@@ -67,23 +67,37 @@ class ChargeScheduler(hass.Hass):
 
     def _replan(self, *_args, **_kwargs):
         """Rebuild the charge plan and set the mode for the current hour."""
+        self.log("Replanning...")
+
         soc = self._read_soc()
         target = self._read_charge_target()
         deadline = self._read_deadline()
 
         if soc is None or target is None or deadline is None:
-            self.log("Cannot build plan: missing input", level="WARNING")
+            self.log(
+                f"Cannot build plan: soc={soc} target={target} deadline={deadline}",
+                level="WARNING",
+            )
             return
 
         energy_needed_kwh = (target - soc) / 100 * self.battery_kwh
+        self.log(
+            f"SoC={soc:.0f}%  target={target:.0f}%  "
+            f"deadline={deadline:%a %d %b %H:%M}  needed={energy_needed_kwh:.1f} kWh"
+        )
+
         if energy_needed_kwh <= 0:
+            self.log("Target already reached — switching to PureSolar")
             self._set_mode("PureSolar")
             return
 
         try:
             forecast = solar_forecast.fetch_forecast()
         except Exception as exc:
-            self.log(f"Solar forecast failed: {exc}", level="WARNING")
+            self.log(
+                f"Solar forecast failed ({type(exc).__name__}: {exc}) — continuing without solar data",
+                level="WARNING",
+            )
             forecast = {}
 
         candidates = build_candidates(
@@ -95,11 +109,18 @@ class ChargeScheduler(hass.Hass):
             self.day_rate,
         )
         selected = select_slots(candidates, energy_needed_kwh)
-        mode = mode_for_current_slot(selected)
 
+        if not selected:
+            self.log(
+                "Optimizer returned no slots — deadline may be in the past or energy need is zero",
+                level="WARNING",
+            )
+
+        mode = mode_for_current_slot(selected)
         self.log(
-            f"Plan rebuilt: SoC={soc:.0f}% target={target:.0f}% "
-            f"deadline={deadline:%a %d %b %H:%M} → mode={mode}"
+            f"Plan: {len(selected)} slot(s) selected  "
+            f"planned={sum(s['energy_kwh'] for s in selected):.1f} kWh  "
+            f"current mode → {mode}"
         )
         self._set_mode(mode)
 

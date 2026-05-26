@@ -47,31 +47,49 @@ def configure(
     _state.longitude = longitude
     _state.roof_planes = roof_planes
     _state.cache_dir = Path(cache_dir)
+    _state.cache_dir.mkdir(parents=True, exist_ok=True)
     _state.max_age = timedelta(minutes=max_age_minutes)
+    log.info(
+        "Configured: %.4f°N %.4f°E, %d roof plane(s), cache=%s (max age %d min)",
+        latitude, longitude, len(roof_planes), _state.cache_dir, max_age_minutes,
+    )
 
 
 def _fetch_api(power_kw: float, tilt: int, azimuth: int) -> dict:
     """Fetch raw API response for one roof plane, using disk cache when fresh."""
     cache_file = _state.cache_dir / f"forecast_{tilt}_{azimuth}_{power_kw}.json"
+
     if cache_file.exists():
-        stored = json.loads(cache_file.read_text(encoding="utf-8"))
-        age = datetime.now() - datetime.fromisoformat(stored["opgeslagen_op"])
-        if age < _state.max_age:
-            return stored["result"]
+        try:
+            stored = json.loads(cache_file.read_text(encoding="utf-8"))
+            age = datetime.now() - datetime.fromisoformat(stored["opgeslagen_op"])
+            if age < _state.max_age:
+                log.debug("Cache hit: %s (age %ds)", cache_file.name, age.seconds)
+                return stored["result"]
+            log.info("Cache stale (%ds old): %s — fetching from API", age.seconds, cache_file.name)
+        except (KeyError, ValueError) as exc:
+            log.warning("Cache file corrupt (%s): %s — fetching from API", cache_file.name, exc)
+    else:
+        log.info("No cache for %s — fetching from API", cache_file.name)
 
     url = (
         f"{FORECAST_SOLAR_BASE}"
         f"/{_state.latitude}/{_state.longitude}/{tilt}/{azimuth}/{power_kw}"
     )
-    log.info("Fetching forecast: %s", url)
+    log.info("GET %s", url)
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     result = resp.json()["result"]
 
-    cache_file.write_text(
-        json.dumps({"opgeslagen_op": datetime.now().isoformat(), "result": result}),
-        encoding="utf-8",
-    )
+    try:
+        cache_file.write_text(
+            json.dumps({"opgeslagen_op": datetime.now().isoformat(), "result": result}),
+            encoding="utf-8",
+        )
+        log.debug("Cache written: %s", cache_file.name)
+    except OSError as exc:
+        log.warning("Could not write cache file %s: %s", cache_file, exc)
+
     return result
 
 
@@ -96,6 +114,7 @@ def fetch_forecast() -> Dict[str, float]:
         )
         for ts, kwh in plane_forecast.items():
             total[ts] = total.get(ts, 0.0) + kwh
+    log.info("Forecast ready: %d periods", len(total))
     return total
 
 
