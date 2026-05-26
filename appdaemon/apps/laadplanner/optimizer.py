@@ -90,6 +90,9 @@ def select_slots(candidates: List[dict], energy_needed_kwh: float) -> List[dict]
     for c in ranked:
         if planned_kwh >= energy_needed_kwh:
             break
+        remaining = energy_needed_kwh - planned_kwh
+        if remaining < c["energy_kwh"]:
+            c = {**c, "energy_kwh": remaining}
         selected.append(c)
         planned_kwh += c["energy_kwh"]
 
