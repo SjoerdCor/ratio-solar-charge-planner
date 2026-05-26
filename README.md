@@ -120,8 +120,8 @@ Na een wijziging in de code:
 
 ```bash
 cd /config/thuisenergie && git pull && \
-cp -r /config/thuisenergie/appdaemon/apps/* \
-   /addon_configs/a0d7b954_appdaemon/apps/
+cp -r /config/thuisenergie/appdaemon/apps/laadplanner/* \
+   /addon_configs/a0d7b954_appdaemon/apps/laadplanner/
 ```
 
 Herstart daarna AppDaemon.
