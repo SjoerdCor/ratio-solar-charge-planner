@@ -59,7 +59,7 @@ def print_plan(selected: List[dict], soc_start: float, soc_target: float, deadli
     print(f"Charge plan  SoC {soc_start:.0f}% -> {soc_target:.0f}%  |  deadline {deadline:%a %d %b %H:%M}")
     print(f"Needed  {energy_needed:.1f} kWh  |  planned {energy_planned:.1f} kWh  |  {len(selected)} slots")
     print()
-    print(f"  {'Time':<18} {'Mode':<12} {'Rate':>9}  {'kWh':>6}  {'SoC':>5}")
+    print(f"  {'Time':<18} {'Mode':<12} {'ct/kWh':>9}  {'kWh':>6}  {'SoC':>5}")
     print(f"  {'-'*18} {'-'*12} {'-'*9}  {'-'*6}  {'-'*5}")
 
     soc = soc_start
@@ -68,7 +68,7 @@ def print_plan(selected: List[dict], soc_start: float, soc_target: float, deadli
         print(
             f"  {s['slot'].strftime('%a %d %b  %H:%M'):<18}"
             f" {s['mode']:<12}"
-            f" {s['effective_price']:>7.1f} ct"
+            f" {s['effective_price']:>7.1f} ct/kWh"
             f"  {s['energy_kwh']:>5.1f}"
             f"  {soc:>4.0f}%"
         )

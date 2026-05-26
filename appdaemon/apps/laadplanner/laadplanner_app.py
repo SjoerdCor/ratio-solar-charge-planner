@@ -138,11 +138,12 @@ class ChargeScheduler(hass.Hass):
             running_soc = min(
                 soc_target, running_soc + s["energy_kwh"] / self.battery_kwh * 100
             )
-            end = s["slot"] + timedelta(hours=1)
+            duration = timedelta(hours=s["energy_kwh"] / s["power_kw"])
+            end = s["slot"] + duration
             lines.append(
                 f"{s['slot'].strftime('%H:%M')}-{end.strftime('%H:%M')}"
                 f"  {s['mode']}"
-                f"  {s['effective_price']:.1f} ct"
+                f"  {s['effective_price']:.1f} ct/kWh"
                 f"  -> {running_soc:.0f}%"
             )
 

@@ -43,13 +43,14 @@ def build_candidates(
         rate = rate_ct(slot.hour, night_rate, day_rate)
 
         if solar_kwh >= MIN_SOLAR_KWH:
-            eff_price = (GRID_POWER_KW * rate) / (GRID_POWER_KW + solar_kwh)
+            power_kw = GRID_POWER_KW + solar_kwh
             candidates.append(
                 {
                     "slot": slot,
                     "mode": "SmartSolar",
-                    "effective_price": eff_price,
-                    "energy_kwh": GRID_POWER_KW + solar_kwh,
+                    "effective_price": (GRID_POWER_KW * rate) / power_kw,
+                    "power_kw": power_kw,
+                    "energy_kwh": power_kw,
                 }
             )
 
@@ -58,6 +59,7 @@ def build_candidates(
                 "slot": slot,
                 "mode": "Smart",
                 "effective_price": rate,
+                "power_kw": charging_power_kw,
                 "energy_kwh": charging_power_kw,
             }
         )
