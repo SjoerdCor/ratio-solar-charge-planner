@@ -71,11 +71,9 @@ git clone https://<jouw-token>@github.com/<jouw-gebruikersnaam>/thuisenergie.git
 > Dit is de vaste locatie voor de AppDaemon add-on in Home Assistant OS.
 
 ```bash
-cp /config/thuisenergie/appdaemon/apps.yaml.example \
-   /addon_configs/a0d7b954_appdaemon/apps/apps.yaml
-
-cp -r /config/thuisenergie/appdaemon/apps/* \
-   /addon_configs/a0d7b954_appdaemon/apps/
+cd /config/thuisenergie && git pull && \
+cp -r /config/thuisenergie/appdaemon/apps/laadplanner/* \
+   /addon_configs/a0d7b954_appdaemon/apps/laadplanner/
 ```
 
 ### Stap 7: apps.yaml invullen
