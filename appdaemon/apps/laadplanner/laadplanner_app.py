@@ -144,7 +144,7 @@ class ChargeScheduler(hass.Hass):
                 f"{s['slot'].strftime('%H:%M')}-{end.strftime('%H:%M')}"
                 f"  {s['mode']}"
                 f"  {s['effective_price']:.1f} ct/kWh"
-                f"  -> {running_soc:.0f}%"
+                f"  -> {running_soc:.0f}% (+{s['energy_kwh']:.1f} kWh)"
             )
 
         plan_text = "\n".join(lines) if lines else "No charging slots planned"
