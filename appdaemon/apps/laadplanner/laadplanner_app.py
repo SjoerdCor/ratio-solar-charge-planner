@@ -19,8 +19,6 @@ import appdaemon.plugins.hass.hassapi as hass
 from . import solar_forecast
 from .optimizer import build_candidates, mode_for_current_slot, select_slots
 
-REPLAN_INTERVAL_S = 3600  # rebuild the plan every hour
-
 
 class ChargeScheduler(hass.Hass):
     """Manages the Ratio charger mode based on SoC, deadline and solar forecast."""
@@ -59,7 +57,8 @@ class ChargeScheduler(hass.Hass):
             cache_dir=Path(__file__).parent / "cache",
         )
 
-        self.run_every(self._replan, "now", REPLAN_INTERVAL_S)
+        self.run_in(self._replan, 0)
+        self.run_hourly(self._replan, "00:00:00")
         self.listen_state(self._replan, self.soc_sensor)
         self.listen_state(self._replan, self.charge_by_entity)
 
