@@ -128,12 +128,42 @@ Herstart daarna AppDaemon.
 
 ## Configuratie
 
-| Helper | Beschrijving | Standaard |
-|--------|-------------|-----------|
-| `input_number.laad_doel` | Laad de auto tot dit percentage | 80% |
-| `input_datetime.laad_klaar_om` | Auto moet op `laad_doel` zijn voor dit tijdstip | — |
+### Helpers aanmaken
 
-Pas deze aan via **Settings → Devices & Services → Helpers**, of via de HA-app.
+Maak de volgende helpers aan via **Settings → Devices & Services → Helpers → Create Helper**:
+
+| Helper | Type | Beschrijving |
+|--------|------|-------------|
+| `input_number.laad_doel` | Number (0–100, eenheid %) | Laad de auto tot dit percentage |
+| `input_datetime.laad_klaar_om` | Date and/or time (datum + tijd) | Deadline voor het bereiken van laad_doel |
+| `input_button.herplan_laadplanner` | Button | Herbereken het laadplan direct |
+
+### Dashboard
+
+Maak een dashboard aan (of voeg kaarten toe aan een bestaand dashboard) via **Settings → Dashboards**.
+
+**Laadplan weergeven** (Markdown card):
+```yaml
+type: markdown
+content: >
+  ## Laadplan
+  {{ state_attr('sensor.laadplan', 'plan') }}
+```
+
+**Instellingen en knop** (Entities card):
+```yaml
+type: entities
+title: Laadplanner
+entities:
+  - entity: input_number.laad_doel
+    name: Doel SoC
+  - entity: input_datetime.laad_klaar_om
+    name: Klaar om
+  - entity: input_button.herplan_laadplanner
+    name: Herplan nu
+```
+
+Na het aanpassen van doel SoC of deadline: druk op **Herplan nu** om het plan direct bij te werken. Het plan wordt sowieso elk heel uur automatisch herberekend.
 
 ## Lokaal ontwikkelen
 

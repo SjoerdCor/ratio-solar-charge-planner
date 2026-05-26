@@ -60,7 +60,7 @@ class ChargeScheduler(hass.Hass):
         self.run_in(self._replan, 0)
         self.run_hourly(self._replan, "00:00:00")
         self.listen_state(self._replan, self.soc_sensor)
-        self.listen_state(self._replan, self.charge_by_entity)
+        self.listen_state(self._replan, "input_button.herplan_laadplanner")
 
         self.log("ChargeScheduler initialised")
 
