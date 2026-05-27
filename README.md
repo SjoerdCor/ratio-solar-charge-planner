@@ -1,148 +1,148 @@
-# Thuisenergiemanagementsysteem — Zeist
+# Slim laden met Ratio Solar
 
-Slim laden van een VW ID.3 op basis van zonne-opwek en een rolling-horizon optimizer,
-aangestuurd via AppDaemon → Home Assistant → Ratio Solar laadpaal.
+AppDaemon-app voor Home Assistant die je **Ratio Solar laadpaal** slim aanstuurt op basis van een zonneopwekvoorspelling en een goedkoopste-eerst-strategie.
 
+## Waarom?
 
-## Projectstructuur
+Gangbare oplossingen zoals evcc of de ingebouwde HA-laadintegraties sturen een laadpaal aan op basis van vermogen: laad als er genoeg zon is, anders niet. De Ratio Solar heeft echter een unieke **SmartSolar**-stand die altijd een klein stukje netstroom combineert met zonne-energie — waardoor je ook bij beperkte opwek voordeel haalt uit je zonnepanelen, iets wat generieke oplossingen missen.
 
-```
-thuisenergie/
-├── appdaemon/
-│   ├── apps.yaml.example           ← template voor configuratie
-│   └── apps/
-│       └── laadplanner/            ← AppDaemon app + optimizer + zonnepredictie
-│           ├── laadplanner_app.py
-│           ├── optimizer.py
-│           └── solar_forecast.py
-├── scripts/
-│   ├── laadplanner.py              ← CLI: plan handmatig bekijken
-│   └── solar_forecast_plot.py      ← visualisatie zonnepredictie
-└── data/
-    └── cache/                      ← tijdelijk, niet in git
-```
+Deze app benut alle drie de standen van de Ratio Solar optimaal. Op basis van een uurlijkse zonneopwekvoorspelling (Forecast.Solar) kiest hij elk uur de goedkoopste combinatie, zodat de auto op tijd opgeladen is tegen minimale kosten.
+
+## Vereisten
+
+- Home Assistant (OS of Supervised)
+- Ratio Solar laadpaal, gekoppeld via de Ratio-integratie
+- Elektrische auto met SoC-sensor in Home Assistant (de meeste moderne EV's bieden dit)
+- Zonnepanelen met bijbehorende opwekgegevens
+
+---
 
 ## Installatie
 
-### Stap 1: HA Helpers aanmaken
+### Stap 1 — Helpers aanmaken (in Home Assistant)
 
-Ga naar **Settings → Devices & Services → Helpers → Create Helper** en maak aan:
+Ga naar **Instellingen → Apparaten & diensten → Hulpstukken → Hulpstuk aanmaken** en maak drie hulpstukken aan:
 
-- Type **Number**, naam `laad_doel`, bereik 0–100, eenheid %, standaard 80
-- Type **Date and/or time**, naam `laad_klaar_om`, type: datum én tijd
+| Naam | Type | Instellingen |
+|------|------|-------------|
+| `laad_doel` | Getal | Minimaal 0, maximaal 100, eenheid % |
+| `laad_klaar_om` | Datum en/of tijd | Schakel "Datum opnemen" én "Tijd opnemen" in |
+| `herplan_laadplanner` | Knop | Geen extra instellingen nodig |
 
-### Stap 2: Entity ID's opzoeken
+### Stap 2 — AppDaemon installeren (in Home Assistant)
 
-Ga naar **Settings → Developer Tools → States** en zoek op:
+Ga naar **Instellingen → Apps**, zoek op **AppDaemon** en klik op **Installeren**. Zet daarna "Starten bij opstarten" aan en klik op **Start**.
 
-- `state_of_charge` of `battery_level` → noteer de volledige entity ID van je auto
-- `charge_mode` → noteer de volledige entity ID van de Ratio laadpaal
+### Stap 3 — Terminal & SSH installeren (in Home Assistant)
 
-### Stap 3: AppDaemon installeren
+Ga naar **Instellingen → Apps**, zoek op **Terminal & SSH** en installeer deze. Klik op **Start** en open de web-UI via **Openen**.
 
-- Ga naar **Settings → Apps** (vroeger "Add-ons")
-- Zoek op **AppDaemon** en klik op Install
-- Klik op Start en zet "Start on boot" aan
+> Alle volgende stappen voer je uit in deze terminal.
 
-### Stap 4: SSH & Terminal installeren
-
-- Ga naar **Settings → Apps**
-- Zoek op **Terminal & SSH** en installeer deze
-- Klik op Start en dan Open Web UI
-
-### Stap 5: Repo clonen
+### Stap 4 — Repo clonen (in Terminal)
 
 Maak eerst een Personal Access Token aan op GitHub:
-
-- Kies Tokens (classic)
+- Kies **Tokens (classic)**
 - Vink alleen `repo` aan
 - Stel een vervaldatum in (90 dagen aanbevolen)
 
-Clone dan de repo via de terminal:
+Clone daarna de repo:
 
 ```bash
 cd /config
-git clone https://<jouw-token>@github.com/<jouw-gebruikersnaam>/thuisenergie.git
+git clone https://<jouw-token>@github.com/sjoerdcor/thuisenergie.git
 ```
 
-### Stap 6: Apps kopiëren
-
-> **Let op:** AppDaemon gebruikt `/addon_configs/a0d7b954_appdaemon/apps/` als app-map.
-> Dit is de vaste locatie voor de AppDaemon add-on in Home Assistant OS.
+### Stap 5 — Apps kopiëren (in Terminal)
 
 ```bash
 cd /config/thuisenergie && git pull && \
-cp -r /config/thuisenergie/appdaemon/apps/laadplanner/* \
-   /addon_configs/a0d7b954_appdaemon/apps/laadplanner/
+cp -r appdaemon/apps/laadplanner \
+   /addon_configs/a0d7b954_appdaemon/apps/
 ```
 
-### Stap 7: apps.yaml invullen
+### Stap 6 — apps.yaml invullen (in Terminal)
 
 ```bash
 nano /addon_configs/a0d7b954_appdaemon/apps/apps.yaml
 ```
 
-Vul de entity ID's in die je in stap 2 hebt gevonden. Sla op met `Ctrl+X → Y → Enter`.
+Zoek de entiteits-ID's op via **Instellingen → Ontwikkelaarshulpmiddelen → Staten** in Home Assistant:
+- Zoek op `state_of_charge` of `battery_level` → SoC-sensor van je auto
+- Zoek op `charge_mode` → modus-selector van de Ratio laadpaal
 
-Controleer ook dat `module` op `laadplanner.laadplanner_app` staat:
+Gebruik onderstaand sjabloon en vul de juiste ID's in:
 
 ```yaml
 laadplanner:
   module: laadplanner.laadplanner_app
   class: ChargeScheduler
-  ...
+
+  location:
+    latitude: 52.09      # jouw breedtegraad
+    longitude: 5.23      # jouw lengtegraad
+
+  panels:
+    - name: SE
+      kwp: 2.58
+      azimuth: -45       # graden t.o.v. het zuiden; west = positief, oost = negatief
+      tilt: 35
+    - name: NE
+      kwp: 1.29
+      azimuth: -135
+      tilt: 35
+
+  entities:
+    soc_sensor:         "sensor.volkswagen_YOUR_SERIAL_state_of_charge"
+    charge_mode_select: "select.ratio_YOUR_SERIAL_charge_mode"
+    charge_target:      "input_number.laad_doel"
+    charge_by:          "input_datetime.laad_klaar_om"
+
+  vehicle:
+    battery_kwh: 77          # bruikbare accucapaciteit in kWh
+    charging_power_kw: 11.0  # maximaal laadvermogen in kW
+
+  fixed_rate:
+    day_rate_ct:   27.0   # ct/kWh, 06:00–22:00
+    night_rate_ct: 23.0   # ct/kWh, 22:00–06:00
 ```
 
-### Stap 8: AppDaemon herstarten
+Sla op met `Ctrl+X → Y → Enter`.
 
-Ga naar **Settings → Apps → AppDaemon** en klik op het herstart-icoontje.
+### Stap 7 — AppDaemon herstarten (in Home Assistant)
 
-### Stap 9: Controleer de logs
+Ga naar **Instellingen → Apps → AppDaemon** en klik op het herstart-icoontje.
 
-Ga naar **Settings → Apps → AppDaemon → Logboek**.
-Je zou dit moeten zien:
+### Stap 8 — Logs controleren (in Home Assistant)
+
+Ga naar **Instellingen → Apps → AppDaemon → Logboek**. Je zou dit moeten zien:
 
 ```
 INFO AppDaemon: Starting apps: ['laadplanner']
 INFO AppDaemon: Calling initialize() for laadplanner
 INFO laadplanner: ChargeScheduler initialised
+INFO laadplanner: Replanning...
 ```
 
-Als er errors staan, zijn de meest voorkomende oorzaken:
-
-- Verkeerde entity ID's in `apps.yaml`
-- `module` staat niet op `laadplanner.laadplanner_app`
-- Helpers uit stap 1 zijn niet aangemaakt
+---
 
 ## Updates
 
-Na een wijziging in de code:
-
 ```bash
 cd /config/thuisenergie && git pull && \
-cp -r /config/thuisenergie/appdaemon/apps/laadplanner/* \
-   /addon_configs/a0d7b954_appdaemon/apps/laadplanner/
+cp -r appdaemon/apps/laadplanner \
+   /addon_configs/a0d7b954_appdaemon/apps/
 ```
 
-Herstart daarna AppDaemon.
+Herstart daarna AppDaemon (zie Stap 7).
 
-## Configuratie
+---
 
-### Helpers aanmaken
+## Dashboard
 
-Maak de volgende helpers aan via **Settings → Devices & Services → Helpers → Create Helper**:
+Voeg de volgende kaarten toe via **Instellingen → Dashboards → Bewerken**.
 
-| Helper | Type | Beschrijving |
-|--------|------|-------------|
-| `input_number.laad_doel` | Number (0–100, eenheid %) | Laad de auto tot dit percentage |
-| `input_datetime.laad_klaar_om` | Date and/or time (datum + tijd) | Deadline voor het bereiken van laad_doel |
-| `input_button.herplan_laadplanner` | Button | Herbereken het laadplan direct |
-
-### Dashboard
-
-Maak een dashboard aan (of voeg kaarten toe aan een bestaand dashboard) via **Settings → Dashboards**.
-
-**Laadplan weergeven** (Markdown card):
+**Laadplan weergeven** (Markdown-kaart):
 ```yaml
 type: markdown
 content: >
@@ -150,7 +150,7 @@ content: >
   {{ state_attr('sensor.laadplan', 'plan') }}
 ```
 
-**Instellingen en knop** (Entities card):
+**Instellingen en knoppen** (Entiteitskaart):
 ```yaml
 type: entities
 title: Laadplanner
@@ -163,7 +163,9 @@ entities:
     name: Herplan nu
 ```
 
-Na het aanpassen van doel SoC of deadline: druk op **Herplan nu** om het plan direct bij te werken. Het plan wordt sowieso elk heel uur automatisch herberekend.
+Met **Herplan nu** bereken je het laadplan direct opnieuw, zonder te wachten op het volgende volle uur.
+
+---
 
 ## Lokaal ontwikkelen
 
@@ -172,7 +174,9 @@ uv run python scripts/laadplanner.py --soc 25 --target 80 --days 2
 uv run python scripts/solar_forecast_plot.py
 ```
 
-Vereist `appdaemon/apps/apps.yaml` (kopieer van `apps.yaml.example` en vul in).
+Vereist `appdaemon/apps/apps.yaml` (kopieer van `appdaemon/apps.yaml.example` en vul in).
+
+---
 
 ## Laadlogica
 
@@ -180,14 +184,12 @@ Vereist `appdaemon/apps/apps.yaml` (kopieer van `apps.yaml.example` en vul in).
 
 **Optimizer** (draait elk uur via AppDaemon):
 - Berekent hoeveel kWh nog nodig is vóór de deadline
-- Bouwt kandidaten per uur: `Smart` (11 kW net) en `SmartSolar` (1.4 kW net + zon)
-- Kiest de goedkoopste uren (vaste tarieven: 27 ct/kWh dag, 23 ct/kWh nacht)
+- Bouwt kandidaten per uur: `Smart` (vol netvermogen) en `SmartSolar` (1,4 kW net + zon)
+- Kiest de goedkoopste uren op basis van vaste tarieven en zonnepredictie
 - Stelt de modus in voor het huidige uur
 
-**Effectieve prijs SmartSolar:**
-```
-effectieve_prijs = (1.4 kW × tarief) / (1.4 kW + P_zon)
-```
+
+---
 
 ## Roadmap
 
