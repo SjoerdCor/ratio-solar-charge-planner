@@ -21,6 +21,7 @@ laadplanner:
 
   entities:
     soc_sensor:         "sensor.volkswagen_YOUR_SERIAL_state_of_charge"
+    cable_sensor:       "binary_sensor.ratio_YOUR_SERIAL_vehicle_connected"
     charge_mode_select: "select.ratio_YOUR_SERIAL_charge_mode"
     charge_target:      "input_number.laad_doel"
     charge_by:          "input_datetime.laad_klaar_om"

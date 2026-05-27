@@ -22,7 +22,7 @@ _AD   = _ROOT / "appdaemon" / "apps" / "laadplanner"
 sys.path.insert(0, str(_AD))
 
 import solar_forecast
-from optimizer import build_candidates, select_slots
+from optimizer import build_candidates, max_available_energy, select_slots, select_slots_forced
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
@@ -56,8 +56,15 @@ def print_plan(selected: List[dict], soc_start: float, soc_target: float, deadli
     energy_needed  = (soc_target - soc_start) / 100 * BATTERY_KWH
     energy_planned = sum(s["energy_kwh"] for s in selected)
 
-    print(f"Charge plan  SoC {soc_start:.0f}% -> {soc_target:.0f}%  |  deadline {deadline:%a %d %b %H:%M}")
-    print(f"Needed  {energy_needed:.1f} kWh  |  planned {energy_planned:.1f} kWh  |  {len(selected)} slots")
+    print(
+        f"Charge plan  SoC {soc_start:.0f}% -> {soc_target:.0f}%"
+        f"  |  deadline {deadline:%a %d %b %H:%M}"
+    )
+    print(
+        f"Needed  {energy_needed:.1f} kWh"
+        f"  |  planned {energy_planned:.1f} kWh"
+        f"  |  {len(selected)} slots"
+    )
     print()
     print(f"  {'Time':<18} {'Mode':<12} {'ct/kWh':>9}  {'kWh':>6}  {'SoC':>5}")
     print(f"  {'-'*18} {'-'*12} {'-'*9}  {'-'*6}  {'-'*5}")
@@ -95,8 +102,20 @@ def main():
     candidates = build_candidates(
         datetime.now(), deadline, forecast, CHARGING_POWER_KW, NIGHT_RATE, DAY_RATE
     )
-    selected = select_slots(candidates, energy_needed)
+
+    max_kwh = max_available_energy(candidates)
+    impossible = max_kwh < energy_needed
+    if impossible:
+        selected = select_slots_forced(candidates)
+    else:
+        selected = select_slots(candidates, energy_needed)
     print_plan(selected, args.soc, args.target, deadline)
+
+    if impossible:
+        print(
+            f"\nWarning: deadline not achievable — {max_kwh:.1f} kWh available,"
+            f" {energy_needed:.1f} kWh needed. Charging as fast as possible."
+        )
 
 
 if __name__ == "__main__":

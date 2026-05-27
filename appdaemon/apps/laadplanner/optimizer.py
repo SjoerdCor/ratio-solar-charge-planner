@@ -69,21 +69,22 @@ def build_candidates(
     return candidates
 
 
-def select_slots(candidates: List[dict], energy_needed_kwh: float) -> List[dict]:
-    """Pick the cheapest mode per slot, then greedily fill energy need in price order."""
-    best_per_slot: Dict[datetime, dict] = {}
+def _best_per_slot(candidates: List[dict]) -> Dict[datetime, dict]:
+    """Return the cheapest candidate per time slot."""
+    best: Dict[datetime, dict] = {}
     for c in candidates:
         t = c["slot"]
-        if (
-            t not in best_per_slot
-            or c["effective_price"] < best_per_slot[t]["effective_price"]
-        ):
-            best_per_slot[t] = c
+        if t not in best or c["effective_price"] < best[t]["effective_price"]:
+            best[t] = c
+    return best
 
+
+def select_slots(candidates: List[dict], energy_needed_kwh: float) -> List[dict]:
+    """Pick the cheapest mode per slot, then greedily fill energy need in price order."""
     # The second sort key means to charge as quickly as possible for the lowest price
     # So you have some slack if there is less solar power than expected
     ranked = sorted(
-        best_per_slot.values(),
+        _best_per_slot(candidates).values(),
         key=lambda c: (c["effective_price"], c["slot"]),
     )
 
@@ -99,6 +100,16 @@ def select_slots(candidates: List[dict], energy_needed_kwh: float) -> List[dict]
         planned_kwh += c["energy_kwh"]
 
     return sorted(selected, key=lambda c: c["slot"])
+
+
+def max_available_energy(candidates: List[dict]) -> float:
+    """Return the maximum energy (kWh) deliverable across all available slots."""
+    return sum(c["energy_kwh"] for c in _best_per_slot(candidates).values())
+
+
+def select_slots_forced(candidates: List[dict]) -> List[dict]:
+    """Select all slots in chronological order, used when the deadline cannot be met."""
+    return sorted(_best_per_slot(candidates).values(), key=lambda c: c["slot"])
 
 
 def mode_for_current_slot(selected: List[dict], now: datetime = None) -> str:

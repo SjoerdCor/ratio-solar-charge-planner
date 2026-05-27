@@ -17,7 +17,13 @@ from pathlib import Path
 import appdaemon.plugins.hass.hassapi as hass
 
 from . import solar_forecast
-from .optimizer import build_candidates, mode_for_current_slot, select_slots
+from .optimizer import (
+    build_candidates,
+    max_available_energy,
+    mode_for_current_slot,
+    select_slots,
+    select_slots_forced,
+)
 
 
 class ChargeScheduler(hass.Hass):
@@ -25,6 +31,7 @@ class ChargeScheduler(hass.Hass):
 
     # AppDaemon uses initialize() instead of __init__(), so attributes are declared here.
     soc_sensor: str
+    cable_sensor: str
     charge_mode_select: str
     charge_target_entity: str
     charge_by_entity: str
@@ -37,6 +44,7 @@ class ChargeScheduler(hass.Hass):
         """Register listeners and schedule the first plan build."""
         entities = self.args["entities"]
         self.soc_sensor = entities["soc_sensor"]
+        self.cable_sensor = entities["cable_sensor"]
         self.charge_mode_select = entities["charge_mode_select"]
         self.charge_target_entity = entities["charge_target"]
         self.charge_by_entity = entities["charge_by"]
@@ -61,6 +69,7 @@ class ChargeScheduler(hass.Hass):
         self.run_hourly(self._replan, "00:00:00")
         self.listen_state(self._replan, self.soc_sensor)
         self.listen_state(self._replan, "input_button.herplan_laadplanner")
+        self.listen_state(self._replan, self.cable_sensor)
 
         self.log("ChargeScheduler initialised")
 
@@ -68,18 +77,28 @@ class ChargeScheduler(hass.Hass):
         """Rebuild the charge plan and set the mode for the current hour."""
         self.log("Replanning...")
 
+        if self.get_state(self.cable_sensor) == "off":
+            self._publish_status("Cable not connected — no charge plan calculated")
+            return
+
         soc = self._read_soc()
+        if soc is None:
+            self.log("Cannot build plan: SoC unavailable", level="WARNING")
+            self._publish_status("Cannot build plan: SoC unavailable")
+            return
+
         target = self._read_charge_target()
+        if target is None:
+            self.log("Cannot build plan: charge target unavailable", level="WARNING")
+            self._publish_status("Cannot build plan: charge target unavailable")
+            return
+
         deadline = self._read_deadline()
 
-        if soc is None or target is None or deadline is None:
-            self.log(
-                f"Cannot build plan: soc={soc} target={target} deadline={deadline}",
-                level="WARNING",
-            )
-            self._publish_status(
-                "Plan unavailable: could not read SoC, target or deadline"
-            )
+        now = datetime.now()
+        if deadline <= now:
+            self.log("Deadline is in the past — no plan possible", level="WARNING")
+            self._publish_status("Deadline passed — please set a new deadline")
             return
 
         energy_needed_kwh = (target - soc) / 100 * self.battery_kwh
@@ -106,13 +125,26 @@ class ChargeScheduler(hass.Hass):
             forecast = {}
 
         candidates = build_candidates(
-            datetime.now(),
+            now,
             deadline,
             forecast,
             self.charging_power_kw,
             self.night_rate,
             self.day_rate,
         )
+
+        max_kwh = max_available_energy(candidates)
+        if max_kwh < energy_needed_kwh:
+            selected = select_slots_forced(candidates)
+            warning = (
+                f"Deadline not achievable: {max_kwh:.1f} kWh available, "
+                f"{energy_needed_kwh:.1f} kWh needed. Charging as fast as possible."
+            )
+            self.log(warning, level="WARNING")
+            self._publish_plan(selected, soc, target, warning=warning)
+            self._set_mode(mode_for_current_slot(selected))
+            return
+
         selected = select_slots(candidates, energy_needed_kwh)
 
         if not selected:
@@ -125,12 +157,14 @@ class ChargeScheduler(hass.Hass):
         self.log(
             f"Plan: {len(selected)} slot(s) selected  "
             f"planned={sum(s['energy_kwh'] for s in selected):.1f} kWh  "
-            f"current mode → {mode}"
+            f"current mode -> {mode}"
         )
         self._publish_plan(selected, soc, target)
         self._set_mode(mode)
 
-    def _publish_plan(self, selected: list, soc_start: float, soc_target: float):
+    def _publish_plan(
+        self, selected: list, soc_start: float, soc_target: float, warning: str = ""
+    ):
         """Write the charge plan to sensor.laadplan so it can be shown on the dashboard."""
         running_soc = soc_start
         lines = []
@@ -148,6 +182,8 @@ class ChargeScheduler(hass.Hass):
             )
 
         plan_text = "\n".join(lines) if lines else "No charging slots planned"
+        if warning:
+            plan_text = warning + "\n\n" + plan_text
         self._publish_status(plan_text)
 
     def _publish_status(self, text: str):
@@ -203,4 +239,4 @@ class ChargeScheduler(hass.Hass):
             entity_id=self.charge_mode_select,
             option=mode,
         )
-        self.log(f"Charge mode: {current} → {mode}")
+        self.log(f"Charge mode: {current} -> {mode}")
