@@ -30,6 +30,11 @@ def parse_tariff(grid_config: dict) -> dict[int, float]:
     rates: dict[int, float] = {h: default_ct for h in range(24)}
 
     for zone in grid_config.get("zones", []):
+        if "days" in zone:
+            raise ValueError(
+                "Tariff zones with 'days' are not yet supported. "
+                "Remove the 'days' key or use hour ranges only."
+            )
         zone_ct = float(zone["price"]) * 100
         hours_str = zone.get("hours")
         affected = _parse_hour_range(hours_str) if hours_str else list(range(24))

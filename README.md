@@ -124,6 +124,7 @@ Het tarief wordt opgegeven in hetzelfde formaat als [evcc](https://docs.evcc.io/
   - `hours: "6-22"` — van 06:00 t/m 21:59 (einduur is niet inbegrepen)
   - `hours: "22-6"` — van 22:00 t/m 05:59 (kruist middernacht)
 - Bij overlappende zones wint de **eerste** zone.
+- Het evcc-veld `days` (dag-van-de-week per zone) wordt nog **niet** ondersteund — de app geeft een foutmelding als je dit gebruikt.
 
 Heb je een enkelvoudig tarief (geen nacht- of daltarief), dan laat je `zones` weg:
 

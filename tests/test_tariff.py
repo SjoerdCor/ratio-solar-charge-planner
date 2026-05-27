@@ -18,6 +18,14 @@ class TestParseTariff:
         with pytest.raises(ValueError):
             parse_tariff({"price": 0.27})
 
+    def test_raises_when_zone_has_days(self):
+        with pytest.raises(ValueError, match="'days'"):
+            parse_tariff({
+                "type": "fixed",
+                "price": 0.27,
+                "zones": [{"days": "Mo-Fr", "hours": "22-6", "price": 0.23}],
+            })
+
     def test_no_zones_all_hours_get_default(self):
         rates = parse_tariff({"type": "fixed", "price": 0.27})
         assert len(rates) == 24
