@@ -24,6 +24,7 @@ from .optimizer import (
     select_slots,
     select_slots_forced,
 )
+from .tariff import parse_tariff
 
 
 class ChargeScheduler(hass.Hass):
@@ -37,8 +38,7 @@ class ChargeScheduler(hass.Hass):
     charge_by_entity: str
     battery_kwh: float
     charging_power_kw: float
-    day_rate: float
-    night_rate: float
+    hourly_rates: dict
 
     def initialize(self):
         """Register listeners and schedule the first plan build."""
@@ -53,9 +53,7 @@ class ChargeScheduler(hass.Hass):
         self.battery_kwh = float(vehicle["battery_kwh"])
         self.charging_power_kw = float(vehicle["charging_power_kw"])
 
-        rate = self.args["fixed_rate"]
-        self.day_rate = float(rate["day_rate_ct"])
-        self.night_rate = float(rate["night_rate_ct"])
+        self.hourly_rates = parse_tariff(self.args["tariff"]["grid"])
 
         loc = self.args["location"]
         solar_forecast.configure(
@@ -129,8 +127,7 @@ class ChargeScheduler(hass.Hass):
             deadline,
             forecast,
             self.charging_power_kw,
-            self.night_rate,
-            self.day_rate,
+            self.hourly_rates,
         )
 
         max_kwh = max_available_energy(candidates)

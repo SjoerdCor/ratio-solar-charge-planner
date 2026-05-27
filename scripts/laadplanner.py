@@ -23,6 +23,7 @@ sys.path.insert(0, str(_AD))
 
 import solar_forecast
 from optimizer import build_candidates, max_available_energy, select_slots, select_slots_forced
+from tariff import parse_tariff
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
@@ -47,8 +48,7 @@ solar_forecast.configure(
 
 BATTERY_KWH       = _cfg["vehicle"]["battery_kwh"]
 CHARGING_POWER_KW = _cfg["vehicle"]["charging_power_kw"]
-NIGHT_RATE        = _cfg["fixed_rate"]["night_rate_ct"]
-DAY_RATE          = _cfg["fixed_rate"]["day_rate_ct"]
+HOURLY_RATES      = parse_tariff(_cfg["tariff"]["grid"])
 
 
 def print_plan(selected: List[dict], soc_start: float, soc_target: float, deadline: datetime):
@@ -100,7 +100,7 @@ def main():
         log.info("  No forecast data available")
 
     candidates = build_candidates(
-        datetime.now(), deadline, forecast, CHARGING_POWER_KW, NIGHT_RATE, DAY_RATE
+        datetime.now(), deadline, forecast, CHARGING_POWER_KW, HOURLY_RATES
     )
 
     max_kwh = max_available_energy(candidates)

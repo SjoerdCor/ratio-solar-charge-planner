@@ -34,7 +34,13 @@ _APPS_YAML = {
         "charge_by": "input_datetime.deadline",
     },
     "vehicle": {"battery_kwh": str(BATTERY_KWH), "charging_power_kw": str(CHARGING_POWER_KW)},
-    "fixed_rate": {"day_rate_ct": str(DAY_RATE), "night_rate_ct": str(NIGHT_RATE)},
+    "tariff": {
+        "grid": {
+            "type": "fixed",
+            "price": 0.27,
+            "zones": [{"hours": "22-6", "price": 0.23}],
+        }
+    },
     "location": {"latitude": "52.09", "longitude": "5.23"},
     "panels": [{"name": "SE", "kwp": 2.58, "azimuth": -45, "tilt": 35}],
 }
@@ -62,8 +68,7 @@ def sched(mocker):
     s.charge_by_entity = "input_datetime.deadline"
     s.battery_kwh = BATTERY_KWH
     s.charging_power_kw = CHARGING_POWER_KW
-    s.day_rate = DAY_RATE
-    s.night_rate = NIGHT_RATE
+    s.hourly_rates = {h: (NIGHT_RATE if h < 6 or h >= 22 else DAY_RATE) for h in range(24)}
 
     return s
 
@@ -97,8 +102,10 @@ class TestInitialize:
         assert sched.charge_mode_select == "select.mode"
         assert sched.battery_kwh == BATTERY_KWH
         assert sched.charging_power_kw == CHARGING_POWER_KW
-        assert sched.day_rate == DAY_RATE
-        assert sched.night_rate == NIGHT_RATE
+        assert isinstance(sched.hourly_rates, dict)
+        assert len(sched.hourly_rates) == 24
+        assert sched.hourly_rates[12] == DAY_RATE
+        assert sched.hourly_rates[23] == NIGHT_RATE
 
     def test_schedules_immediate_and_hourly_replan(self, sched, mocker):
         mocker.patch("laadplanner.solar_forecast.configure")

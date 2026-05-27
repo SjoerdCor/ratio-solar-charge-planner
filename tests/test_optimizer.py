@@ -11,7 +11,6 @@ from laadplanner.optimizer import (
     build_candidates,
     max_available_energy,
     mode_for_current_slot,
-    rate_ct,
     select_slots,
     select_slots_forced,
 )
@@ -19,45 +18,11 @@ from laadplanner.optimizer import (
 NIGHT = 23.0
 DAY = 27.0
 POWER = 11.0
+HOURLY_RATES = {h: (NIGHT if h < 6 or h >= 22 else DAY) for h in range(24)}
 
 # Fixed reference times used across tests so results are deterministic.
 NOW = datetime(2025, 6, 1, 14, 0)
 NEXT_HOUR = datetime(2025, 6, 1, 15, 0)
-
-
-# ---------------------------------------------------------------------------
-# rate_ct
-# ---------------------------------------------------------------------------
-
-class TestRateCt:
-    def test_midnight_is_night(self):
-        assert rate_ct(0, NIGHT, DAY) == NIGHT
-
-    def test_hour_5_is_night(self):
-        assert rate_ct(5, NIGHT, DAY) == NIGHT
-
-    def test_hour_6_is_day(self):
-        assert rate_ct(6, NIGHT, DAY) == DAY
-
-    def test_midday_is_day(self):
-        assert rate_ct(12, NIGHT, DAY) == DAY
-
-    def test_hour_21_is_day(self):
-        assert rate_ct(21, NIGHT, DAY) == DAY
-
-    def test_hour_22_is_night(self):
-        assert rate_ct(22, NIGHT, DAY) == NIGHT
-
-    def test_hour_23_is_night(self):
-        assert rate_ct(23, NIGHT, DAY) == NIGHT
-
-    def test_all_day_hours_return_day_rate(self):
-        for h in range(6, 22):
-            assert rate_ct(h, NIGHT, DAY) == DAY
-
-    def test_all_night_hours_return_night_rate(self):
-        for h in list(range(0, 6)) + list(range(22, 24)):
-            assert rate_ct(h, NIGHT, DAY) == NIGHT
 
 
 # ---------------------------------------------------------------------------
@@ -67,40 +32,40 @@ class TestRateCt:
 class TestBuildCandidates:
     def test_deadline_in_past_returns_empty(self):
         deadline = NOW - timedelta(hours=1)
-        assert build_candidates(NOW, deadline, {}, POWER, NIGHT, DAY) == []
+        assert build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES) == []
 
     def test_deadline_equal_to_now_returns_empty(self):
         # slot starts at next full hour, which is already past NOW if deadline == NOW
-        assert build_candidates(NOW, NOW, {}, POWER, NIGHT, DAY) == []
+        assert build_candidates(NOW, NOW, {}, POWER, HOURLY_RATES) == []
 
     def test_deadline_one_hour_away_produces_one_smart_slot(self):
         deadline = NOW + timedelta(hours=1)
-        result = build_candidates(NOW, deadline, {}, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
         assert len(result) == 1
         assert result[0]["mode"] == "Smart"
         assert result[0]["slot"] == NEXT_HOUR
 
     def test_two_hours_produces_two_smart_slots(self):
         deadline = NOW + timedelta(hours=2)
-        result = build_candidates(NOW, deadline, {}, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
         assert len(result) == 2
 
     def test_first_slot_is_next_full_hour_even_with_minutes(self):
         now_with_minutes = datetime(2025, 6, 1, 14, 45)
         deadline = datetime(2025, 6, 1, 16, 0)
-        result = build_candidates(now_with_minutes, deadline, {}, POWER, NIGHT, DAY)
+        result = build_candidates(now_with_minutes, deadline, {}, POWER, HOURLY_RATES)
         assert result[0]["slot"] == datetime(2025, 6, 1, 15, 0)
 
     def test_no_solar_produces_only_smart_candidates(self):
         deadline = NOW + timedelta(hours=3)
-        result = build_candidates(NOW, deadline, {}, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
         assert all(c["mode"] == "Smart" for c in result)
 
     def test_solar_above_threshold_adds_smart_solar(self):
         # Slot = 15:00, Forecast.Solar key = 16:00
         solar = {"2025-06-01 16:00:00": 1.0}
         deadline = NOW + timedelta(hours=1)
-        result = build_candidates(NOW, deadline, solar, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         modes = {c["mode"] for c in result}
         assert "SmartSolar" in modes
         assert "Smart" in modes
@@ -108,20 +73,20 @@ class TestBuildCandidates:
     def test_solar_at_threshold_creates_smart_solar(self):
         solar = {"2025-06-01 16:00:00": MIN_SOLAR_KWH}
         deadline = NOW + timedelta(hours=1)
-        result = build_candidates(NOW, deadline, solar, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         assert any(c["mode"] == "SmartSolar" for c in result)
 
     def test_solar_just_below_threshold_no_smart_solar(self):
         solar = {"2025-06-01 16:00:00": MIN_SOLAR_KWH - 0.001}
         deadline = NOW + timedelta(hours=1)
-        result = build_candidates(NOW, deadline, solar, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         assert not any(c["mode"] == "SmartSolar" for c in result)
 
     def test_solar_key_must_be_slot_plus_one_hour(self):
         # Key at slot time (15:00) should NOT trigger SmartSolar — key must be at 16:00
         wrong_key_solar = {"2025-06-01 15:00:00": 2.0}
         deadline = NOW + timedelta(hours=1)
-        result = build_candidates(NOW, deadline, wrong_key_solar, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, wrong_key_solar, POWER, HOURLY_RATES)
         assert not any(c["mode"] == "SmartSolar" for c in result)
 
     def test_smart_solar_effective_price_formula(self):
@@ -129,7 +94,7 @@ class TestBuildCandidates:
         solar = {"2025-06-01 16:00:00": solar_kwh}
         deadline = NOW + timedelta(hours=1)
         # Slot at 15:00 is daytime → rate = DAY
-        result = build_candidates(NOW, deadline, solar, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         smart_solar = next(c for c in result if c["mode"] == "SmartSolar")
         total_power = GRID_POWER_KW + solar_kwh
         expected_price = (GRID_POWER_KW * DAY) / total_power
@@ -139,7 +104,7 @@ class TestBuildCandidates:
 
     def test_smart_candidate_uses_charging_power(self):
         deadline = NOW + timedelta(hours=1)
-        result = build_candidates(NOW, deadline, {}, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
         smart = result[0]
         assert smart["power_kw"] == POWER
         assert smart["energy_kwh"] == POWER
@@ -147,19 +112,19 @@ class TestBuildCandidates:
     def test_day_rate_applied_at_slot_in_day(self):
         # NOW = 14:00, slot = 15:00 (daytime)
         deadline = NOW + timedelta(hours=1)
-        result = build_candidates(NOW, deadline, {}, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
         assert result[0]["effective_price"] == DAY
 
     def test_night_rate_applied_at_slot_at_night(self):
         # now = 22:00, slot = 23:00 (nighttime)
         now_night = datetime(2025, 6, 1, 22, 0)
         deadline = datetime(2025, 6, 1, 23, 0)
-        result = build_candidates(now_night, deadline, {}, POWER, NIGHT, DAY)
+        result = build_candidates(now_night, deadline, {}, POWER, HOURLY_RATES)
         assert result[0]["effective_price"] == NIGHT
 
     def test_candidate_keys_present(self):
         deadline = NOW + timedelta(hours=1)
-        result = build_candidates(NOW, deadline, {}, POWER, NIGHT, DAY)
+        result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
         required_keys = {"slot", "mode", "effective_price", "power_kw", "energy_kwh"}
         for c in result:
             assert required_keys <= c.keys()

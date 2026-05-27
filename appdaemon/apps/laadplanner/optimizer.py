@@ -14,24 +14,19 @@ GRID_POWER_KW = 1.4  # grid power drawn during SmartSolar (kW)
 MIN_SOLAR_KWH = 0.3  # minimum solar production per slot to enable SmartSolar (kWh)
 
 
-def rate_ct(hour: int, night_rate: float, day_rate: float) -> float:
-    """Return the fixed tariff in ct/kWh for a given hour-of-day."""
-    return night_rate if (hour >= 22 or hour < 6) else day_rate
-
-
 def build_candidates(
     now: datetime,
     deadline: datetime,
     solar: Dict[str, float],
     charging_power_kw: float,
-    night_rate: float,
-    day_rate: float,
+    hourly_rates: Dict[int, float],
 ) -> List[dict]:
     """
     Build one candidate action per hour in the planning horizon.
 
     solar: {datetime_str: kWh} from solar_forecast.fetch_forecast().
-    Returns list of dicts with keys: slot, mode, effective_price, energy_kwh.
+    hourly_rates: {hour (0–23): rate in ct/kWh} from tariff.parse_tariff().
+    Returns list of dicts with keys: slot, mode, effective_price, power_kw, energy_kwh.
     """
     candidates = []
     slot = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
@@ -40,7 +35,7 @@ def build_candidates(
         # Forecast.Solar timestamps mark the END of a period, so look up slot+1h.
         key = (slot + timedelta(hours=1)).strftime("%Y-%m-%d %H:00:00")
         solar_kwh = solar.get(key, 0.0)
-        rate = rate_ct(slot.hour, night_rate, day_rate)
+        rate = hourly_rates[slot.hour]
 
         if solar_kwh >= MIN_SOLAR_KWH:
             power_kw = GRID_POWER_KW + solar_kwh

@@ -103,12 +103,36 @@ laadplanner:
     battery_kwh: 77          # bruikbare accucapaciteit in kWh
     charging_power_kw: 11.0  # maximaal laadvermogen in kW
 
-  fixed_rate:
-    day_rate_ct:   27.0   # ct/kWh, 06:00–22:00
-    night_rate_ct: 23.0   # ct/kWh, 22:00–06:00
+  tariff:
+    grid:
+      type: fixed
+      price: 0.27       # EUR/kWh (default rate)
+      zones:
+        - hours: "22-6"
+          price: 0.23   # EUR/kWh (night rate)
 ```
 
 Sla op met `Ctrl+X → Y → Enter`.
+
+#### Tarief configureren
+
+Het tarief wordt opgegeven in hetzelfde formaat als [evcc](https://docs.evcc.io/docs/reference/configuration/tariffs).
+
+- `price` is de standaardprijs in **EUR/kWh** (dus 0.27 = 27 ct/kWh).
+- `zones` is optioneel. Zonder zones geldt de standaardprijs voor alle uren.
+- Een zone overschrijft de standaardprijs voor de opgegeven uren:
+  - `hours: "6-22"` — van 06:00 t/m 21:59 (einduur is niet inbegrepen)
+  - `hours: "22-6"` — van 22:00 t/m 05:59 (kruist middernacht)
+- Bij overlappende zones wint de **eerste** zone.
+
+Heb je een enkelvoudig tarief (geen nacht- of daltarief), dan laat je `zones` weg:
+
+```yaml
+  tariff:
+    grid:
+      type: fixed
+      price: 0.28
+```
 
 ### Stap 7 — AppDaemon herstarten (in Home Assistant)
 

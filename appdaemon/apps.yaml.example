@@ -30,6 +30,10 @@ laadplanner:
     battery_kwh: 77
     charging_power_kw: 11.0
 
-  fixed_rate:
-    day_rate_ct:   27.0   # 06:00–22:00
-    night_rate_ct: 23.0   # 22:00–06:00
+  tariff:
+    grid:
+      type: fixed
+      price: 0.27       # EUR/kWh (default rate)
+      zones:
+        - hours: "22-6"
+          price: 0.23   # EUR/kWh (night rate)
