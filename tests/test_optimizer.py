@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 import pytest
 
 from laadplanner.optimizer import (
-    GRID_POWER_KW,
-    MIN_SOLAR_KWH,
+    MIN_CHARGING_KW,
+    SMART_SOLAR_MIN_PV_KWH,
     _best_per_slot,
     build_candidates,
     max_available_energy,
@@ -35,7 +35,6 @@ class TestBuildCandidates:
         assert build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES) == []
 
     def test_deadline_equal_to_now_returns_empty(self):
-        # slot starts at next full hour, which is already past NOW if deadline == NOW
         assert build_candidates(NOW, NOW, {}, POWER, HOURLY_RATES) == []
 
     def test_deadline_one_hour_away_produces_one_smart_slot(self):
@@ -61,46 +60,91 @@ class TestBuildCandidates:
         result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
         assert all(c["mode"] == "Smart" for c in result)
 
-    def test_solar_above_threshold_adds_smart_solar(self):
-        # Slot = 15:00, Forecast.Solar key = 16:00
+    # --- SmartSolar (SMART_SOLAR_MIN_PV_KWH <= solar < MIN_CHARGING_KW) ---
+
+    def test_solar_between_thresholds_adds_smart_solar(self):
+        # 1.0 kWh is between SMART_SOLAR_MIN_PV_KWH (0.3) and MIN_CHARGING_KW (1.4)
         solar = {"2025-06-01 16:00:00": 1.0}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         modes = {c["mode"] for c in result}
         assert "SmartSolar" in modes
         assert "Smart" in modes
+        assert "PureSolar" not in modes
 
-    def test_solar_at_threshold_creates_smart_solar(self):
-        solar = {"2025-06-01 16:00:00": MIN_SOLAR_KWH}
+    def test_solar_at_min_pv_threshold_creates_smart_solar(self):
+        solar = {"2025-06-01 16:00:00": SMART_SOLAR_MIN_PV_KWH}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         assert any(c["mode"] == "SmartSolar" for c in result)
 
-    def test_solar_just_below_threshold_no_smart_solar(self):
-        solar = {"2025-06-01 16:00:00": MIN_SOLAR_KWH - 0.001}
+    def test_solar_just_below_min_pv_threshold_no_smart_solar(self):
+        solar = {"2025-06-01 16:00:00": SMART_SOLAR_MIN_PV_KWH - 0.001}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
-        assert not any(c["mode"] == "SmartSolar" for c in result)
-
-    def test_solar_key_must_be_slot_plus_one_hour(self):
-        # Key at slot time (15:00) should NOT trigger SmartSolar — key must be at 16:00
-        wrong_key_solar = {"2025-06-01 15:00:00": 2.0}
-        deadline = NOW + timedelta(hours=1)
-        result = build_candidates(NOW, deadline, wrong_key_solar, POWER, HOURLY_RATES)
         assert not any(c["mode"] == "SmartSolar" for c in result)
 
     def test_smart_solar_effective_price_formula(self):
-        solar_kwh = 1.5
+        # solar = 1.0 kWh → grid_kw = 1.4 - 1.0 = 0.4; total = 1.4 (MIN_CHARGING_KW)
+        solar_kwh = 1.0
         solar = {"2025-06-01 16:00:00": solar_kwh}
         deadline = NOW + timedelta(hours=1)
-        # Slot at 15:00 is daytime → rate = DAY
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         smart_solar = next(c for c in result if c["mode"] == "SmartSolar")
-        total_power = GRID_POWER_KW + solar_kwh
-        expected_price = (GRID_POWER_KW * DAY) / total_power
+        grid_kw = MIN_CHARGING_KW - solar_kwh
+        expected_price = (grid_kw * DAY) / MIN_CHARGING_KW
         assert smart_solar["effective_price"] == pytest.approx(expected_price)
-        assert smart_solar["power_kw"] == pytest.approx(total_power)
-        assert smart_solar["energy_kwh"] == pytest.approx(total_power)
+        assert smart_solar["power_kw"] == pytest.approx(MIN_CHARGING_KW)
+        assert smart_solar["energy_kwh"] == pytest.approx(MIN_CHARGING_KW)
+
+    # --- PureSolar (solar >= MIN_CHARGING_KW) ---
+
+    def test_solar_at_min_charging_kw_creates_pure_solar(self):
+        solar = {"2025-06-01 16:00:00": MIN_CHARGING_KW}
+        deadline = NOW + timedelta(hours=1)
+        result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
+        assert any(c["mode"] == "PureSolar" for c in result)
+
+    def test_solar_above_min_charging_kw_creates_pure_solar_not_smart_solar(self):
+        solar = {"2025-06-01 16:00:00": 1.5}
+        deadline = NOW + timedelta(hours=1)
+        result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
+        modes = {c["mode"] for c in result}
+        assert "PureSolar" in modes
+        assert "SmartSolar" not in modes
+
+    def test_pure_solar_effective_price_is_zero(self):
+        solar = {"2025-06-01 16:00:00": 2.0}
+        deadline = NOW + timedelta(hours=1)
+        result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
+        pure = next(c for c in result if c["mode"] == "PureSolar")
+        assert pure["effective_price"] == pytest.approx(0.0)
+
+    def test_pure_solar_power_equals_solar_when_below_charger_max(self):
+        solar_kwh = 2.0
+        solar = {"2025-06-01 16:00:00": solar_kwh}
+        deadline = NOW + timedelta(hours=1)
+        result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
+        pure = next(c for c in result if c["mode"] == "PureSolar")
+        assert pure["power_kw"] == pytest.approx(solar_kwh)
+        assert pure["energy_kwh"] == pytest.approx(solar_kwh)
+
+    def test_pure_solar_power_capped_at_charger_max(self):
+        # Solar exceeds charger capacity — should be capped
+        solar = {"2025-06-01 16:00:00": POWER + 5.0}
+        deadline = NOW + timedelta(hours=1)
+        result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
+        pure = next(c for c in result if c["mode"] == "PureSolar")
+        assert pure["power_kw"] == pytest.approx(POWER)
+
+    # --- shared ---
+
+    def test_solar_key_must_be_slot_plus_one_hour(self):
+        # Key at slot time (15:00) should NOT trigger any solar mode — key must be 16:00
+        wrong_key_solar = {"2025-06-01 15:00:00": 2.0}
+        deadline = NOW + timedelta(hours=1)
+        result = build_candidates(NOW, deadline, wrong_key_solar, POWER, HOURLY_RATES)
+        assert not any(c["mode"] in ("SmartSolar", "PureSolar") for c in result)
 
     def test_smart_candidate_uses_charging_power(self):
         deadline = NOW + timedelta(hours=1)
@@ -110,13 +154,11 @@ class TestBuildCandidates:
         assert smart["energy_kwh"] == POWER
 
     def test_day_rate_applied_at_slot_in_day(self):
-        # NOW = 14:00, slot = 15:00 (daytime)
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
         assert result[0]["effective_price"] == DAY
 
     def test_night_rate_applied_at_slot_at_night(self):
-        # now = 22:00, slot = 23:00 (nighttime)
         now_night = datetime(2025, 6, 1, 22, 0)
         deadline = datetime(2025, 6, 1, 23, 0)
         result = build_candidates(now_night, deadline, {}, POWER, HOURLY_RATES)
@@ -241,8 +283,8 @@ class TestSelectSlots:
     def test_smart_solar_preferred_over_smart_same_slot_if_cheaper(self):
         slot = _slot_at(15)
         smart = {"slot": slot, "mode": "Smart", "effective_price": 27.0, "power_kw": 11.0, "energy_kwh": 11.0}
-        smart_solar = {"slot": slot, "mode": "SmartSolar", "effective_price": 18.0, "power_kw": 12.4, "energy_kwh": 12.4}
-        result = select_slots([smart, smart_solar], 11.0)
+        smart_solar = {"slot": slot, "mode": "SmartSolar", "effective_price": 18.0, "power_kw": 1.4, "energy_kwh": 1.4}
+        result = select_slots([smart, smart_solar], 1.4)
         assert result[0]["mode"] == "SmartSolar"
 
 

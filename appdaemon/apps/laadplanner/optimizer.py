@@ -10,8 +10,13 @@ Units: power in kW, energy in kWh, tariffs in ct/kWh.
 from datetime import datetime, timedelta
 from typing import Dict, List
 
-GRID_POWER_KW = 1.4  # grid power drawn during SmartSolar (kW)
-MIN_SOLAR_KWH = 0.3  # minimum solar production per slot to enable SmartSolar (kWh)
+# Minimum power (kW) the charger needs to actually charge a car.
+# SmartSolar guarantees this by drawing from the grid when PV falls short.
+# PureSolar only activates when PV production reaches this threshold.
+MIN_CHARGING_KW = 1.4
+
+# Minimum hourly PV production (kWh) below which SmartSolar is not worthwhile.
+SMART_SOLAR_MIN_PV_KWH = 0.3
 
 
 def build_candidates(
@@ -27,6 +32,11 @@ def build_candidates(
     solar: {datetime_str: kWh} from solar_forecast.fetch_forecast().
     hourly_rates: {hour (0–23): rate in ct/kWh} from tariff.parse_tariff().
     Returns list of dicts with keys: slot, mode, effective_price, power_kw, energy_kwh.
+
+    SmartSolar charges at max(MIN_CHARGING_KW, solar_kwh); the grid covers any shortfall
+    below MIN_CHARGING_KW. PureSolar charges at solar_kwh with no grid draw, but only
+    activates when solar_kwh >= MIN_CHARGING_KW. Solar production is modelled as constant
+    within each hour (v1 simplification; actual output varies with cloud cover).
     """
     candidates = []
     slot = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
@@ -37,15 +47,29 @@ def build_candidates(
         solar_kwh = solar.get(key, 0.0)
         rate = hourly_rates[slot.hour]
 
-        if solar_kwh >= MIN_SOLAR_KWH:
-            power_kw = GRID_POWER_KW + solar_kwh
+        if solar_kwh >= MIN_CHARGING_KW:
+            # PV covers the minimum — PureSolar, no grid draw.
+            # Cap at charger max (relevant when PV array is larger than car charge rate).
+            power_kw = min(solar_kwh, charging_power_kw)
+            candidates.append(
+                {
+                    "slot": slot,
+                    "mode": "PureSolar",
+                    "effective_price": 0.0,
+                    "power_kw": power_kw,
+                    "energy_kwh": power_kw,
+                }
+            )
+        elif solar_kwh >= SMART_SOLAR_MIN_PV_KWH:
+            # PV helps but falls short — SmartSolar draws the difference from the grid.
+            grid_kw = MIN_CHARGING_KW - solar_kwh
             candidates.append(
                 {
                     "slot": slot,
                     "mode": "SmartSolar",
-                    "effective_price": (GRID_POWER_KW * rate) / power_kw,
-                    "power_kw": power_kw,
-                    "energy_kwh": power_kw,
+                    "effective_price": (grid_kw * rate) / MIN_CHARGING_KW,
+                    "power_kw": MIN_CHARGING_KW,
+                    "energy_kwh": MIN_CHARGING_KW,
                 }
             )
 
