@@ -1,4 +1,10 @@
-# Voeg toe aan /config/configuration.yaml en herstart Home Assistant.
+# HA package — symlink this file to /config/packages/laadplanner.yaml
+# and add to configuration.yaml (one-time):
+#
+#   homeassistant:
+#     packages: !include_dir_named packages
+#
+# Then restart Home Assistant.
 
 input_number:
   laad_doel:

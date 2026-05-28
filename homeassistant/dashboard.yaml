@@ -1,0 +1,28 @@
+views:
+  - type: sections
+    path: ev-laden
+    header:
+      card:
+        type: heading
+        heading_style: title
+        heading: EV-laden
+    sections:
+      - type: grid
+        title: Instellingen
+        cards:
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_number.laad_doel
+                name: Doel SoC
+              - entity: input_datetime.laad_klaar_om
+                name: Klaar om
+              - entity: input_button.herplan_laadplanner
+                name: Herplan nu
+                icon: mdi:refresh
+      - type: grid
+        title: Laadplan
+        cards:
+          - type: markdown
+            content: >
+              {{ state_attr('sensor.laadplan', 'plan') or 'Geen laadplan beschikbaar' }}

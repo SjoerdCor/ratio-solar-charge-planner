@@ -19,27 +19,17 @@ Deze app benut alle drie de standen van de Ratio Solar optimaal. Op basis van ee
 
 ## Installatie
 
-### Stap 1 — Helpers aanmaken (in Home Assistant)
-
-Ga naar **Instellingen → Apparaten & diensten → Hulpstukken → Hulpstuk aanmaken** en maak drie hulpstukken aan:
-
-| Naam | Type | Instellingen |
-|------|------|-------------|
-| `laad_doel` | Getal | Minimaal 0, maximaal 100, eenheid % |
-| `laad_klaar_om` | Datum en/of tijd | Schakel "Datum opnemen" én "Tijd opnemen" in |
-| `herplan_laadplanner` | Knop | Geen extra instellingen nodig |
-
-### Stap 2 — AppDaemon installeren (in Home Assistant)
+### Stap 1 — AppDaemon installeren (in Home Assistant)
 
 Ga naar **Instellingen → Apps**, zoek op **AppDaemon** en klik op **Installeren**. Zet daarna "Starten bij opstarten" aan en klik op **Start**.
 
-### Stap 3 — Terminal & SSH installeren (in Home Assistant)
+### Stap 2 — Terminal & SSH installeren (in Home Assistant)
 
 Ga naar **Instellingen → Apps**, zoek op **Terminal & SSH** en installeer deze. Klik op **Start** en open de web-UI via **Openen**.
 
 > Alle volgende stappen voer je uit in deze terminal.
 
-### Stap 4 — Repo clonen (in Terminal)
+### Stap 3 — Repo clonen (in Terminal)
 
 Maak eerst een Personal Access Token aan op GitHub:
 - Kies **Tokens (classic)**
@@ -53,15 +43,31 @@ cd /config
 git clone https://<jouw-token>@github.com/sjoerdcor/thuisenergie.git
 ```
 
-### Stap 5 — Apps kopiëren (in Terminal)
+### Stap 4 — Apps en helpers deployen (in Terminal)
 
 ```bash
 cd /config/thuisenergie && git pull && \
 cp -r appdaemon/apps/laadplanner \
-   /addon_configs/a0d7b954_appdaemon/apps/
+   /addon_configs/a0d7b954_appdaemon/apps/ && \
+mkdir -p /config/packages && \
+ln -sf /config/thuisenergie/homeassistant/packages/laadplanner.yaml \
+   /config/packages/laadplanner.yaml
 ```
 
-### Stap 6 — apps.yaml invullen (in Terminal)
+De symlink zorgt dat `git pull` de helpers automatisch bijwerkt.
+
+Voeg daarna de packages-include **eenmalig** toe aan `/config/configuration.yaml` (als de `homeassistant:`-sectie al bestaat, voeg alleen de `packages:`-regel toe):
+
+```bash
+nano /config/configuration.yaml
+```
+
+```yaml
+homeassistant:
+  packages: !include_dir_named packages
+```
+
+### Stap 5 — apps.yaml invullen (in Terminal)
 
 ```bash
 nano /addon_configs/a0d7b954_appdaemon/apps/apps.yaml
@@ -135,9 +141,30 @@ Heb je een enkelvoudig tarief (geen nacht- of daltarief), dan laat je `zones` we
       price: 0.28
 ```
 
-### Stap 7 — AppDaemon herstarten (in Home Assistant)
+### Stap 6 — Dashboard toevoegen (in Terminal)
 
-Ga naar **Instellingen → Apps → AppDaemon** en klik op het herstart-icoontje.
+Voeg het dashboard toe aan `/config/configuration.yaml`:
+
+```bash
+nano /config/configuration.yaml
+```
+
+```yaml
+lovelace:
+  dashboards:
+    ev-laden:
+      mode: yaml
+      title: EV-laden
+      filename: thuisenergie/homeassistant/dashboard.yaml
+      show_in_sidebar: true
+      require_admin: false
+```
+
+Na het herstarten in Stap 7 verschijnt **EV-laden** in de zijbalk. Het dashboard wordt automatisch bijgewerkt bij elke `git pull`.
+
+### Stap 7 — Home Assistant herstarten (in Home Assistant)
+
+Ga naar **Instellingen → Systeem → Opnieuw opstarten**. Home Assistant laadt de helpers uit `configuration.yaml` en herstart AppDaemon automatisch.
 
 ### Stap 8 — Logs controleren (in Home Assistant)
 
@@ -160,34 +187,13 @@ cp -r appdaemon/apps/laadplanner \
    /addon_configs/a0d7b954_appdaemon/apps/
 ```
 
-Herstart daarna AppDaemon (zie Stap 7).
+De helpers worden automatisch bijgewerkt via de symlink. Herstart Home Assistant als er wijzigingen zijn in `homeassistant/packages/laadplanner.yaml`.
 
 ---
 
 ## Dashboard
 
-Voeg de volgende kaarten toe via **Instellingen → Dashboards → Bewerken**.
-
-**Laadplan weergeven** (Markdown-kaart):
-```yaml
-type: markdown
-content: >
-  ## Laadplan
-  {{ state_attr('sensor.laadplan', 'plan') }}
-```
-
-**Instellingen en knoppen** (Entiteitskaart):
-```yaml
-type: entities
-title: Laadplanner
-entities:
-  - entity: input_number.laad_doel
-    name: Doel SoC
-  - entity: input_datetime.laad_klaar_om
-    name: Klaar om
-  - entity: input_button.herplan_laadplanner
-    name: Herplan nu
-```
+Het dashboard staat in `homeassistant/dashboard.yaml` en wordt tijdens de installatie (Stap 6) automatisch gekoppeld. Na een `git pull` zijn wijzigingen direct zichtbaar na een HA-herstart.
 
 Met **Herplan nu** bereken je het laadplan direct opnieuw, zonder te wachten op het volgende volle uur.
 
@@ -210,7 +216,7 @@ Vereist `appdaemon/apps/apps.yaml` (kopieer van `appdaemon/apps.yaml.example` en
 
 **Optimizer** (draait elk uur via AppDaemon):
 - Berekent hoeveel kWh nog nodig is vóór de deadline
-- Bouwt kandidaten per uur: `Smart` (vol netvermogen) en `SmartSolar` (1,4 kW net + zon)
+- Bouwt kandidaten per uur: `Smart` (vol netvermogen), `SmartSolar` (minimaal 1,4 kW, netsupplement indien zon tekortschiet) en `PureSolar` (alleen zon, minimaal 1,4 kW opwek vereist)
 - Kiest de goedkoopste uren op basis van vaste tarieven en zonnepredictie
 - Stelt de modus in voor het huidige uur
 
