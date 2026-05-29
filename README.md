@@ -19,24 +19,24 @@ This app makes full use of all three Ratio Solar modes. Based on an hourly solar
 
 ## Installation
 
-### Step 1 — Install AppDaemon (in Home Assistant)
+### Step 1 — Install prerequisites (in Home Assistant)
 
-Go to **Settings → Add-ons**, search for **AppDaemon** and click **Install**. Enable "Start on boot" and click **Start**.
+**Ratio integration** — Install via HACS: add [home-assistant-ratio](https://github.com/aaearon/home-assistant-ratio) as a custom repository (category: Integration). This connects your charge point to Home Assistant.
 
-### Step 2 — Install Terminal & SSH (in Home Assistant)
+**AppDaemon** — Go to **Settings → Add-ons**, search for **AppDaemon** and click **Install**. Enable "Start on boot" and click **Start**.
 
-Go to **Settings → Add-ons**, search for **Terminal & SSH** and install it. Click **Start** and open the web UI via **Open**.
+**Terminal & SSH** — Go to **Settings → Add-ons**, search for **Terminal & SSH** and install it. Click **Start** and open the web UI via **Open**.
 
-> All following steps are run in this terminal.
+> Steps 2–6 are run in the Terminal & SSH terminal.
 
-### Step 3 — Clone the repo (in Terminal)
+### Step 2 — Clone the repo (in Terminal)
 
 ```bash
 cd /config
 git clone https://github.com/sjoerdcor/ratio-solar-charge-planner.git
 ```
 
-### Step 4 — Set up apps, helpers and dashboard (in Terminal)
+### Step 3 — Set up apps, helpers and dashboard (in Terminal)
 
 This step creates **one-time symlinks** so that `git pull` is enough for all future updates.
 
@@ -69,9 +69,9 @@ lovelace:
       require_admin: false
 ```
 
-After restarting in Step 6, **EV Charging** appears in the sidebar. The dashboard updates automatically with every `git pull`.
+After restarting in Step 5, **EV Charging** appears in the sidebar. The dashboard updates automatically with every `git pull`.
 
-### Step 5 — Fill in apps.yaml (in Terminal)
+### Step 4 — Fill in apps.yaml (in Terminal)
 
 ```bash
 nano /addon_configs/a0d7b954_appdaemon/apps/apps.yaml
@@ -161,11 +161,11 @@ For a flat rate (no night or off-peak tariff), omit `zones`:
       price: 0.28
 ```
 
-### Step 6 — Restart Home Assistant (in Home Assistant)
+### Step 5 — Restart Home Assistant (in Home Assistant)
 
 Go to **Settings → System → Restart**. Home Assistant loads the helpers from `configuration.yaml` and restarts AppDaemon automatically.
 
-### Step 7 — Check the logs (in Home Assistant)
+### Step 6 — Check the logs (in Home Assistant)
 
 Go to **Settings → Add-ons → AppDaemon → Log**. You should see:
 
@@ -190,7 +190,7 @@ The symlinks ensure that the app code, helpers and dashboard all update automati
 
 ## Dashboard
 
-The dashboard is in `homeassistant/dashboard.yaml` and is linked automatically during installation (Step 4). Changes are visible after a `git pull` and a HA restart.
+The dashboard is in `homeassistant/dashboard.yaml` and is linked automatically during installation (Step 3). Changes are visible after a `git pull` and a HA restart.
 
 Use **Replan** to recalculate the charge plan immediately, without waiting for the next full hour.
 
