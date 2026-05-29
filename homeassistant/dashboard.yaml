@@ -17,6 +17,7 @@ views:
                 name: Target SoC
               - entity: input_number.soc_override
                 name: Current SoC (fallback)
+                secondary_info: last-changed
               - entity: input_datetime.charge_by
                 name: Ready by
               - entity: input_button.replan
