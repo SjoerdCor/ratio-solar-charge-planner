@@ -42,12 +42,14 @@ class ChargeScheduler(hass.Hass):
 
     def initialize(self):
         """Register listeners and schedule the first plan build."""
-        entities = self.args["entities"]
-        self.soc_sensor = entities["soc_sensor"]
-        self.cable_sensor = entities["cable_sensor"]
-        self.charge_mode_select = entities["charge_mode_select"]
-        self.charge_target_entity = entities["charge_target"]
-        self.charge_by_entity = entities["charge_by"]
+        self.soc_sensor = self.args["soc_sensor"]
+
+        serial = self.args["ratio_serial"]
+        self.cable_sensor = f"binary_sensor.ratio_{serial}_vehicle_connected"
+        self.charge_mode_select = f"select.ratio_{serial}_charge_mode"
+
+        self.charge_target_entity = "input_number.charge_target"
+        self.charge_by_entity = "input_datetime.charge_by"
 
         vehicle = self.args["vehicle"]
         self.battery_kwh = float(vehicle["battery_kwh"])
@@ -55,11 +57,12 @@ class ChargeScheduler(hass.Hass):
 
         self.hourly_rates = parse_tariff(self.args["tariff"]["grid"])
 
-        loc = self.args["location"]
+        lat = float(self.get_state("zone.home", attribute="latitude"))
+        lon = float(self.get_state("zone.home", attribute="longitude"))
         solar_forecast.configure(
-            latitude=float(loc["latitude"]),
-            longitude=float(loc["longitude"]),
-            roof_planes=self.args["panels"],
+            latitude=lat,
+            longitude=lon,
+            roof_planes=self.args.get("panels", []),
             cache_dir=Path(__file__).parent / "cache",
         )
 

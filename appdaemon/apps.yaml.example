@@ -5,26 +5,18 @@ charger:
   module: charger.charger_app
   class: ChargeScheduler
 
-  location:
-    latitude: 52.09
-    longitude: 5.23
-
   panels:
     - name: SE
       kwp: 2.58
-      azimuth: -45
-      tilt: 35
+      azimuth: -45       # degrees from south: 0=S, -90=E, +90=W, -45=SE, +45=SW
+      tilt: 35           # degrees from horizontal: 0=flat, 90=vertical
     - name: NE
       kwp: 1.29
-      azimuth: -135
+      azimuth: -135      # -135=NE
       tilt: 35
 
-  entities:
-    soc_sensor:         "sensor.YOUR_EV_state_of_charge"
-    cable_sensor:       "binary_sensor.ratio_YOUR_SERIAL_vehicle_connected"
-    charge_mode_select: "select.ratio_YOUR_SERIAL_charge_mode"
-    charge_target:      "input_number.charge_target"
-    charge_by:          "input_datetime.charge_by"
+  ratio_serial: "YOUR_SERIAL"
+  soc_sensor:   "sensor.YOUR_EV_state_of_charge"
 
   vehicle:
     battery_kwh: 77

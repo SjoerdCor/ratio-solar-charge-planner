@@ -84,20 +84,17 @@ After restarting in Step 6, **EV Charging** appears in the sidebar. The dashboar
 nano /addon_configs/a0d7b954_appdaemon/apps/apps.yaml
 ```
 
-Look up entity IDs via **Settings → Developer tools → States** in Home Assistant:
-- Search for `state_of_charge` or `battery_level` → SoC sensor of your EV
-- Search for `charge_mode` → mode selector of the Ratio charge point
+You need two values from Home Assistant — look them up via **Settings → Developer tools → States**:
 
-Use the template below and fill in the correct IDs:
+- **Ratio serial number**: search for `charge_mode` and note the entity ID. It looks like `select.ratio_P000000012345_charge_mode` — the part between `ratio_` and `_charge_mode` is your serial number.
+- **SoC sensor**: search for `state_of_charge` or `battery_level` to find your EV's battery sensor.
+
+Use the template below and fill in your values:
 
 ```yaml
 charger:
   module: charger.charger_app
   class: ChargeScheduler
-
-  location:
-    latitude: 52.09      # your latitude
-    longitude: 5.23      # your longitude
 
   panels:
     - name: SE
@@ -109,12 +106,8 @@ charger:
       azimuth: -135      # -135=NE
       tilt: 35
 
-  entities:
-    soc_sensor:         "sensor.YOUR_EV_state_of_charge"
-    cable_sensor:       "binary_sensor.ratio_YOUR_SERIAL_vehicle_connected"
-    charge_mode_select: "select.ratio_YOUR_SERIAL_charge_mode"
-    charge_target:      "input_number.charge_target"
-    charge_by:          "input_datetime.charge_by"
+  ratio_serial: "YOUR_SERIAL"
+  soc_sensor:   "sensor.YOUR_EV_state_of_charge"
 
   vehicle:
     battery_kwh: 77          # usable battery capacity in kWh
@@ -132,6 +125,8 @@ charger:
 Save with `Ctrl+X → Y → Enter`.
 
 #### Configuring the panels
+
+The app uses your home location together with the panel orientation to request an hourly solar forecast from Forecast.Solar. It reads the coordinates automatically from `zone.home` in Home Assistant — the location you set during the initial HA setup.
 
 Each entry under `panels` describes one roof section (array). You can add as many as you have.
 

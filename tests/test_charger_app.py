@@ -26,13 +26,8 @@ DAY_RATE = 27.0
 NIGHT_RATE = 23.0
 
 _APPS_YAML = {
-    "entities": {
-        "soc_sensor": "sensor.soc",
-        "cable_sensor": "binary_sensor.cable",
-        "charge_mode_select": "select.mode",
-        "charge_target": "input_number.target",
-        "charge_by": "input_datetime.deadline",
-    },
+    "ratio_serial": "TESTSERIAL",
+    "soc_sensor": "sensor.soc",
     "vehicle": {"battery_kwh": str(BATTERY_KWH), "charging_power_kw": str(CHARGING_POWER_KW)},
     "tariff": {
         "grid": {
@@ -41,7 +36,6 @@ _APPS_YAML = {
             "zones": [{"hours": "22-6", "price": 0.23}],
         }
     },
-    "location": {"latitude": "52.09", "longitude": "5.23"},
     "panels": [{"name": "SE", "kwp": 2.58, "azimuth": -45, "tilt": 35}],
 }
 
@@ -64,8 +58,8 @@ def sched(mocker):
     s.soc_sensor = "sensor.soc"
     s.cable_sensor = "binary_sensor.cable"
     s.charge_mode_select = "select.mode"
-    s.charge_target_entity = "input_number.target"
-    s.charge_by_entity = "input_datetime.deadline"
+    s.charge_target_entity = "input_number.charge_target"
+    s.charge_by_entity = "input_datetime.charge_by"
     s.battery_kwh = BATTERY_KWH
     s.charging_power_kw = CHARGING_POWER_KW
     s.hourly_rates = {h: (NIGHT_RATE if h < 6 or h >= 22 else DAY_RATE) for h in range(24)}
@@ -81,8 +75,8 @@ def _setup_states(sched, *, soc="60", target="80", deadline=None, cable="on", mo
 
     mapping = {
         "sensor.soc": soc,
-        "input_number.target": target,
-        "input_datetime.deadline": deadline,
+        "input_number.charge_target": target,
+        "input_datetime.charge_by": deadline,
         "binary_sensor.cable": cable,
         "select.mode": mode,
     }
@@ -93,13 +87,29 @@ def _setup_states(sched, *, soc="60", target="80", deadline=None, cable="on", mo
 # initialize()
 # ---------------------------------------------------------------------------
 
+def _mock_zone_home(sched, lat="52.37", lon="4.90"):
+    """Configure get_state to return Amsterdam coordinates for zone.home."""
+    def _get_state(*args, **kwargs):
+        entity = args[0] if args else None
+        attribute = kwargs.get("attribute")
+        if entity == "zone.home" and attribute == "latitude":
+            return lat
+        if entity == "zone.home" and attribute == "longitude":
+            return lon
+        return None
+    sched.get_state.side_effect = _get_state
+
+
 class TestInitialize:
     def test_sets_entity_attributes(self, sched, mocker):
         mocker.patch("charger.solar_forecast.configure")
+        _mock_zone_home(sched)
         sched.initialize()
         assert sched.soc_sensor == "sensor.soc"
-        assert sched.cable_sensor == "binary_sensor.cable"
-        assert sched.charge_mode_select == "select.mode"
+        assert sched.cable_sensor == "binary_sensor.ratio_TESTSERIAL_vehicle_connected"
+        assert sched.charge_mode_select == "select.ratio_TESTSERIAL_charge_mode"
+        assert sched.charge_target_entity == "input_number.charge_target"
+        assert sched.charge_by_entity == "input_datetime.charge_by"
         assert sched.battery_kwh == BATTERY_KWH
         assert sched.charging_power_kw == CHARGING_POWER_KW
         assert isinstance(sched.hourly_rates, dict)
@@ -109,23 +119,26 @@ class TestInitialize:
 
     def test_schedules_immediate_and_hourly_replan(self, sched, mocker):
         mocker.patch("charger.solar_forecast.configure")
+        _mock_zone_home(sched)
         sched.initialize()
         sched.run_in.assert_called_once_with(sched._replan, 0)
         sched.run_hourly.assert_called_once_with(sched._replan, "00:00:00")
 
     def test_registers_three_listen_state_calls(self, sched, mocker):
         mocker.patch("charger.solar_forecast.configure")
+        _mock_zone_home(sched)
         sched.initialize()
         # soc_sensor, replan button, cable_sensor
         assert sched.listen_state.call_count == 3
 
     def test_calls_solar_forecast_configure(self, sched, mocker):
         configure = mocker.patch("charger.solar_forecast.configure")
+        _mock_zone_home(sched)
         sched.initialize()
         configure.assert_called_once()
         _, kwargs = configure.call_args
-        assert kwargs["latitude"] == 52.09
-        assert kwargs["longitude"] == 5.23
+        assert kwargs["latitude"] == pytest.approx(52.37)
+        assert kwargs["longitude"] == pytest.approx(4.90)
 
 
 # ---------------------------------------------------------------------------
