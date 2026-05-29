@@ -40,23 +40,23 @@ Clone daarna de repo:
 
 ```bash
 cd /config
-git clone https://<jouw-token>@github.com/sjoerdcor/thuisenergie.git
+git clone https://<jouw-token>@github.com/sjoerdcor/ratio-solar-charge-planner.git
 ```
 
-### Stap 4 — Apps en helpers deployen (in Terminal)
+### Stap 4 — Apps, helpers en dashboard instellen (in Terminal)
+
+Deze stap maak je **eenmalig** symlinks zodat `git pull` voortaan genoeg is voor updates.
 
 ```bash
-cd /config/thuisenergie && git pull && \
-cp -r appdaemon/apps/laadplanner \
-   /addon_configs/a0d7b954_appdaemon/apps/ && \
+cd /config/ratio-solar-charge-planner && git pull && \
+ln -sf /config/ratio-solar-charge-planner/appdaemon/apps/laadplanner \
+   /addon_configs/a0d7b954_appdaemon/apps/laadplanner && \
 mkdir -p /config/packages && \
-ln -sf /config/thuisenergie/homeassistant/packages/laadplanner.yaml \
+ln -sf /config/ratio-solar-charge-planner/homeassistant/packages/laadplanner.yaml \
    /config/packages/laadplanner.yaml
 ```
 
-De symlink zorgt dat `git pull` de helpers automatisch bijwerkt.
-
-Voeg daarna de packages-include **eenmalig** toe aan `/config/configuration.yaml` (als de `homeassistant:`-sectie al bestaat, voeg alleen de `packages:`-regel toe):
+Voeg daarna **eenmalig** de volgende secties toe aan `/config/configuration.yaml`. Als de `homeassistant:`-sectie al bestaat, voeg alleen de `packages:`-regel toe.
 
 ```bash
 nano /config/configuration.yaml
@@ -65,7 +65,18 @@ nano /config/configuration.yaml
 ```yaml
 homeassistant:
   packages: !include_dir_named packages
+
+lovelace:
+  dashboards:
+    ev-laden:
+      mode: yaml
+      title: EV-laden
+      filename: ratio-solar-charge-planner/homeassistant/dashboard.yaml
+      show_in_sidebar: true
+      require_admin: false
 ```
+
+Na het herstarten in Stap 6 verschijnt **EV-laden** in de zijbalk. Het dashboard wordt automatisch bijgewerkt bij elke `git pull`.
 
 ### Stap 5 — apps.yaml invullen (in Terminal)
 
@@ -141,32 +152,11 @@ Heb je een enkelvoudig tarief (geen nacht- of daltarief), dan laat je `zones` we
       price: 0.28
 ```
 
-### Stap 6 — Dashboard toevoegen (in Terminal)
-
-Voeg het dashboard toe aan `/config/configuration.yaml`:
-
-```bash
-nano /config/configuration.yaml
-```
-
-```yaml
-lovelace:
-  dashboards:
-    ev-laden:
-      mode: yaml
-      title: EV-laden
-      filename: thuisenergie/homeassistant/dashboard.yaml
-      show_in_sidebar: true
-      require_admin: false
-```
-
-Na het herstarten in Stap 7 verschijnt **EV-laden** in de zijbalk. Het dashboard wordt automatisch bijgewerkt bij elke `git pull`.
-
-### Stap 7 — Home Assistant herstarten (in Home Assistant)
+### Stap 6 — Home Assistant herstarten (in Home Assistant)
 
 Ga naar **Instellingen → Systeem → Opnieuw opstarten**. Home Assistant laadt de helpers uit `configuration.yaml` en herstart AppDaemon automatisch.
 
-### Stap 8 — Logs controleren (in Home Assistant)
+### Stap 7 — Logs controleren (in Home Assistant)
 
 Ga naar **Instellingen → Apps → AppDaemon → Logboek**. Je zou dit moeten zien:
 
@@ -182,31 +172,18 @@ INFO laadplanner: Replanning...
 ## Updates
 
 ```bash
-cd /config/thuisenergie && git pull && \
-cp -r appdaemon/apps/laadplanner \
-   /addon_configs/a0d7b954_appdaemon/apps/
+cd /config/ratio-solar-charge-planner && git pull
 ```
 
-De helpers worden automatisch bijgewerkt via de symlink. Herstart Home Assistant als er wijzigingen zijn in `homeassistant/packages/laadplanner.yaml`.
+De symlinks zorgen dat de app-code, helpers en het dashboard automatisch meekomen. Herstart Home Assistant alleen als er wijzigingen zijn in `homeassistant/packages/laadplanner.yaml`.
 
 ---
 
 ## Dashboard
 
-Het dashboard staat in `homeassistant/dashboard.yaml` en wordt tijdens de installatie (Stap 6) automatisch gekoppeld. Na een `git pull` zijn wijzigingen direct zichtbaar na een HA-herstart.
+Het dashboard staat in `homeassistant/dashboard.yaml` en wordt tijdens de installatie (Stap 4) automatisch gekoppeld. Na een `git pull` zijn wijzigingen direct zichtbaar na een HA-herstart.
 
 Met **Herplan nu** bereken je het laadplan direct opnieuw, zonder te wachten op het volgende volle uur.
-
----
-
-## Lokaal ontwikkelen
-
-```bash
-uv run python scripts/laadplanner.py --soc 25 --target 80 --days 2
-uv run python scripts/solar_forecast_plot.py
-```
-
-Vereist `appdaemon/apps/apps.yaml` (kopieer van `appdaemon/apps.yaml.example` en vul in).
 
 ---
 
@@ -219,7 +196,6 @@ Vereist `appdaemon/apps/apps.yaml` (kopieer van `appdaemon/apps.yaml.example` en
 - Bouwt kandidaten per uur: `Smart` (vol netvermogen), `SmartSolar` (minimaal 1,4 kW, netsupplement indien zon tekortschiet) en `PureSolar` (alleen zon, minimaal 1,4 kW opwek vereist)
 - Kiest de goedkoopste uren op basis van vaste tarieven en zonnepredictie
 - Stelt de modus in voor het huidige uur
-
 
 ---
 

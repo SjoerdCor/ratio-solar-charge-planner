@@ -1,6 +1,9 @@
 # Cache en data
-data/cache/*.json
-data/*.json
+appdaemon/apps/laadplanner/cache/
+data/
+
+# Lokale scripts (niet voor eindgebruikers)
+scripts/
 
 # Python
 __pycache__/
