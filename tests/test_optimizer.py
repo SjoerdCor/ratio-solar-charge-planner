@@ -418,3 +418,53 @@ class TestModeForCurrentSlot:
         now = datetime(2025, 6, 1, 16, 0)
         selected = [{"slot": _slot_at(14), "mode": "Smart"}]
         assert mode_for_current_slot(selected, now) == "PureSolar"
+
+
+# ---------------------------------------------------------------------------
+# End-to-end scenario tests
+# ---------------------------------------------------------------------------
+
+# Fixed "now": Sunday evening, no solar production.
+_SCENARIO_NOW = datetime(2025, 6, 1, 20, 0)
+_BATTERY_KWH = 77.0
+
+
+def _solar_tomorrow(now: datetime, kwh_per_hour: float = 3.0) -> dict:
+    """Simulated solar forecast: kwh_per_hour for slots 09:00-17:00 the next day."""
+    forecast = {}
+    tomorrow = (now + timedelta(days=1)).date()
+    for h in range(9, 18):
+        # Forecast.Solar keys mark the END of the period: slot H uses key H+1.
+        key = datetime(tomorrow.year, tomorrow.month, tomorrow.day, h, 0).strftime("%Y-%m-%d %H:00:00")
+        forecast[key] = kwh_per_hour
+    return forecast
+
+
+class TestScenarios:
+    def test_small_topup_with_solar_tomorrow_plans_pure_solar_and_waits(self):
+        # 75->80%, 2 days, solar 3 kWh/h tomorrow.
+        # Expected: PureSolar slots tomorrow cover the need; do not charge tonight.
+        now = _SCENARIO_NOW
+        solar = _solar_tomorrow(now)
+        energy_needed = (80 - 75) / 100 * _BATTERY_KWH
+
+        candidates = build_candidates(now, now + timedelta(days=2), solar, POWER, HOURLY_RATES)
+        selected = select_slots(candidates, energy_needed)
+
+        assert mode_for_current_slot(selected, now) == "PureSolar"
+        assert all(s["mode"] == "PureSolar" for s in selected)
+        assert all(s["effective_price"] == pytest.approx(0.0) for s in selected)
+
+    def test_urgent_charge_no_solar_switches_to_smart_immediately(self):
+        # 30->80%, deadline 1 hour, no solar.
+        # Expected: deadline not achievable, but mode for current hour is Smart.
+        now = _SCENARIO_NOW
+        energy_needed = (80 - 30) / 100 * _BATTERY_KWH
+
+        candidates = build_candidates(now, now + timedelta(hours=1), {}, POWER, HOURLY_RATES)
+        max_kwh = max_available_energy(candidates)
+
+        assert max_kwh < energy_needed
+
+        selected = select_slots_forced(candidates)
+        assert mode_for_current_slot(selected, now) == "Smart"
