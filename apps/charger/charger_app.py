@@ -137,8 +137,14 @@ class ChargeScheduler(hass.Hass):
 
         if energy_needed_kwh <= 0:
             self.log("Target already reached — switching to PureSolar")
-            self._publish_status(
-                f"Target reached ({soc:.0f}% >= {target:.0f}%) — no charging needed"
+            status = f"Target reached ({soc:.0f}% ≥ {target:.0f}%) — no charging needed"
+            self._publish_status(status)
+            self._write_plan_json(
+                soc_start=round(soc, 1),
+                soc_target=round(target, 1),
+                deadline=deadline,
+                slots=[],
+                status=status,
             )
             self._set_mode("PureSolar")
             return
@@ -312,6 +318,7 @@ class ChargeScheduler(hass.Hass):
         deadline: datetime,
         slots: list,
         warning: str | None = None,
+        status: str | None = None,
     ):
         """Write the charge plan as JSON to /homeassistant/www/ for the HTML dashboard."""
         data = {
@@ -319,6 +326,7 @@ class ChargeScheduler(hass.Hass):
             "soc_target": soc_target,
             "deadline": deadline.isoformat(timespec="seconds"),
             "warning": warning,
+            "status": status,
             "updated": datetime.now().isoformat(timespec="seconds"),
             "slots": slots,
         }

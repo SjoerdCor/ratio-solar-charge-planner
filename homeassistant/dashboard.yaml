@@ -28,6 +28,5 @@ views:
       - type: grid
         title: Charge plan
         cards:
-          - type: markdown
-            content: >
-              {{ state_attr('sensor.charge_plan', 'plan') or 'No charge plan available' }}
+          - type: webpage
+            url: /local/laadplan.html
