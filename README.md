@@ -49,7 +49,7 @@ This step creates **one-time symlinks** so that `git pull` is enough for all fut
 
 ```bash
 cd /config/ratio-solar-charge-planner && git pull && \
-ln -sf /config/ratio-solar-charge-planner/appdaemon/apps/charger \
+ln -sf /homeassistant/ratio-solar-charge-planner/appdaemon/apps/charger \
    /addon_configs/a0d7b954_appdaemon/apps/charger && \
 mkdir -p /config/packages && \
 ln -sf /config/ratio-solar-charge-planner/homeassistant/packages/charger.yaml \
