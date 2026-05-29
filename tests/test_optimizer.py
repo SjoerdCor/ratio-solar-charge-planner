@@ -522,3 +522,25 @@ class TestScenarios:
 
         assert not any(s["mode"] == "PureSolar" for s in selected)
         assert all(s["effective_price"] == pytest.approx(NIGHT) for s in selected)
+
+    def test_partial_night_slot_covers_remainder_after_solar(self):
+        # 40 kWh needed; solar covers 35 kWh (7 slots x 5 kWh); remainder via night grid.
+        # Expected: 7 full PureSolar slots + 1 partial Smart slot trimmed to 5 kWh.
+        now = _SCENARIO_NOW
+        tomorrow = (now + timedelta(days=1)).date()
+        solar = {
+            datetime(tomorrow.year, tomorrow.month, tomorrow.day, h, 0).strftime("%Y-%m-%d %H:00:00"): 5.0
+            for h in range(9, 16)  # keys 09:00-15:00 -> slots 08:00-14:00
+        }
+
+        candidates = build_candidates(now, now + timedelta(days=2), solar, POWER, HOURLY_RATES)
+        selected = select_slots(candidates, 40.0)
+
+        pure = [s for s in selected if s["mode"] == "PureSolar"]
+        night = [s for s in selected if s["effective_price"] == pytest.approx(NIGHT)]
+
+        assert len(pure) == 7
+        assert sum(s["energy_kwh"] for s in pure) == pytest.approx(35.0)
+        assert len(night) == 1
+        assert night[0]["energy_kwh"] == pytest.approx(5.0)
+        assert sum(s["energy_kwh"] for s in selected) == pytest.approx(40.0)
