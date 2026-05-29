@@ -5,10 +5,10 @@ AppDaemon app: reads SoC and deadline from HA, runs the optimizer,
 and writes the desired charge mode back to the Ratio charger.
 
 Configuration via apps.yaml on the HA host (not committed to git).
-See appdaemon/apps.yaml.example for the expected structure.
+See apps.yaml.example for the expected structure.
 
 Deployment: git clone / git pull on the HA host, symlink
-appdaemon/apps/charger/ into the AppDaemon apps directory.
+apps/charger/ into the AppDaemon apps directory.
 """
 
 from datetime import datetime, timedelta
@@ -26,12 +26,16 @@ from .optimizer import (
 )
 from .tariff import parse_tariff
 
+_SOC_OVERRIDE = "input_number.soc_override"
+_SESSION_ENERGY = "sensor.session_energy_kwh"
+
 
 class ChargeScheduler(hass.Hass):
     """Manages the Ratio charger mode based on SoC, deadline and solar forecast."""
 
     # AppDaemon uses initialize() instead of __init__(), so attributes are declared here.
     soc_sensor: str
+    power_sensor: str
     cable_sensor: str
     charge_mode_select: str
     charge_target_entity: str
@@ -39,6 +43,8 @@ class ChargeScheduler(hass.Hass):
     battery_kwh: float
     charging_power_kw: float
     hourly_rates: dict
+    _last_power_kw: float | None
+    _last_power_time: datetime | None
 
     def initialize(self):
         """Register listeners and schedule the first plan build."""
@@ -47,6 +53,7 @@ class ChargeScheduler(hass.Hass):
         serial = self.args["ratio_serial"]
         self.cable_sensor = f"binary_sensor.ratio_{serial}_vehicle_connected"
         self.charge_mode_select = f"select.ratio_{serial}_charge_mode"
+        self.power_sensor = f"sensor.ratio_{serial}_actual_charging_power"
 
         self.charge_target_entity = "input_number.charge_target"
         self.charge_by_entity = "input_datetime.charge_by"
@@ -66,11 +73,19 @@ class ChargeScheduler(hass.Hass):
             cache_dir=Path(__file__).parent / "cache",
         )
 
+        self._last_power_kw = None
+        self._last_power_time = None
+
+        if self.get_state(self.cable_sensor) != "on":
+            self._reset_session_energy()
+
         self.run_in(self._replan, 0)
         self.run_hourly(self._replan, "00:00:00")
         self.listen_state(self._replan, self.soc_sensor)
         self.listen_state(self._replan, "input_button.replan")
         self.listen_state(self._replan, self.cable_sensor)
+        self.listen_state(self._on_power_change, self.power_sensor)
+        self.listen_state(self._on_cable_disconnect, self.cable_sensor, new="off")
 
         self.log("ChargeScheduler initialised")
 
@@ -83,6 +98,11 @@ class ChargeScheduler(hass.Hass):
             return
 
         soc = self._read_soc()
+        if soc is not None:
+            self._sync_soc_override(soc)
+        else:
+            soc = self._read_soc_fallback()
+
         if soc is None:
             self.log("Cannot build plan: SoC unavailable", level="WARNING")
             self._publish_status("Cannot build plan: SoC unavailable")
@@ -162,6 +182,76 @@ class ChargeScheduler(hass.Hass):
         self._publish_plan(selected, soc, target)
         self._set_mode(mode)
 
+    def _on_power_change(self, entity, attribute, old, new, kwargs):
+        """Accumulate session energy from every power sensor update (Riemann sum)."""
+        now = datetime.now()
+        if self._last_power_time is not None and self._last_power_kw is not None:
+            elapsed_hours = (now - self._last_power_time).total_seconds() / 3600
+            energy_kwh = self._last_power_kw * elapsed_hours
+            if energy_kwh > 0:
+                try:
+                    current = float(self.get_state(_SESSION_ENERGY) or 0)
+                except (TypeError, ValueError):
+                    current = 0.0
+                self.set_state(
+                    _SESSION_ENERGY,
+                    state=round(current + energy_kwh, 3),
+                    attributes={"unit_of_measurement": "kWh", "friendly_name": "Session energy"},
+                )
+
+        if new in (None, "unavailable", "unknown"):
+            self._last_power_kw = 0.0
+        else:
+            try:
+                self._last_power_kw = float(new) / 1000  # W → kW
+            except (TypeError, ValueError):
+                self._last_power_kw = 0.0
+        self._last_power_time = now
+
+    def _on_cable_disconnect(self, entity, attribute, old, new, kwargs):
+        """Reset session energy tracking when the cable is removed."""
+        self._reset_session_energy()
+
+    def _reset_session_energy(self):
+        self._last_power_kw = None
+        self._last_power_time = None
+        self.set_state(
+            _SESSION_ENERGY,
+            state=0.0,
+            attributes={"unit_of_measurement": "kWh", "friendly_name": "Session energy"},
+        )
+        self.log("Session energy reset")
+
+    def _sync_soc_override(self, soc: float):
+        """Keep input_number.soc_override in sync with the real sensor."""
+        self.call_service(
+            "input_number/set_value",
+            entity_id=_SOC_OVERRIDE,
+            value=round(soc, 1),
+        )
+
+    def _read_soc_fallback(self):
+        """Estimate SoC from override + accumulated session energy when sensor is unavailable."""
+        override = self.get_state(_SOC_OVERRIDE)
+        if override in (None, "unavailable", "unknown"):
+            return None
+        try:
+            base_soc = float(override)
+        except ValueError:
+            return None
+
+        try:
+            session_kwh = float(self.get_state(_SESSION_ENERGY) or 0)
+        except (TypeError, ValueError):
+            session_kwh = 0.0
+
+        estimated = min(100.0, base_soc + session_kwh / self.battery_kwh * 100)
+        self.log(
+            f"SoC sensor unavailable — override {base_soc:.0f}% + {session_kwh:.2f} kWh session = {estimated:.0f}%",
+            level="WARNING",
+        )
+        return estimated
+
     def _publish_plan(
         self, selected: list, soc_start: float, soc_target: float, warning: str = ""
     ):
@@ -195,7 +285,7 @@ class ChargeScheduler(hass.Hass):
         )
 
     def _read_soc(self):
-        """Read current SoC from the EV sensor (%)."""
+        """Read current SoC from the EV sensor (%). Returns None if unavailable."""
         self.log(f"SOC sensor entity ID: {self.soc_sensor!r}")
         value = self.get_state(self.soc_sensor)
         if value in (None, "unavailable", "unknown"):

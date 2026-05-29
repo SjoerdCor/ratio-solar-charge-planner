@@ -63,6 +63,9 @@ def sched(mocker):
     s.battery_kwh = BATTERY_KWH
     s.charging_power_kw = CHARGING_POWER_KW
     s.hourly_rates = {h: (NIGHT_RATE if h < 6 or h >= 22 else DAY_RATE) for h in range(24)}
+    s.power_sensor = "sensor.ratio_TESTSERIAL_actual_charging_power"
+    s._last_power_kw = None
+    s._last_power_time = None
 
     return s
 
@@ -81,6 +84,15 @@ def _setup_states(sched, *, soc="60", target="80", deadline=None, cable="on", mo
         "select.mode": mode,
     }
     sched.get_state.side_effect = lambda entity_id: mapping.get(entity_id)
+
+
+def _assert_no_mode_set(sched):
+    """Assert that select/select_option was never called (mode was not changed)."""
+    select_calls = [
+        c for c in sched.call_service.call_args_list
+        if c[0][0] == "select/select_option"
+    ]
+    assert not select_calls, f"Unexpected mode change: {select_calls}"
 
 
 # ---------------------------------------------------------------------------
@@ -124,12 +136,12 @@ class TestInitialize:
         sched.run_in.assert_called_once_with(sched._replan, 0)
         sched.run_hourly.assert_called_once_with(sched._replan, "00:00:00")
 
-    def test_registers_three_listen_state_calls(self, sched, mocker):
+    def test_registers_five_listen_state_calls(self, sched, mocker):
         mocker.patch("charger.solar_forecast.configure")
         _mock_zone_home(sched)
         sched.initialize()
-        # soc_sensor, replan button, cable_sensor
-        assert sched.listen_state.call_count == 3
+        # soc_sensor, replan button, cable_sensor, power_sensor, cable_disconnect
+        assert sched.listen_state.call_count == 5
 
     def test_calls_solar_forecast_configure(self, sched, mocker):
         configure = mocker.patch("charger.solar_forecast.configure")
@@ -186,7 +198,7 @@ class TestReplanEarlyExits:
 
         args, kwargs = sched.set_state.call_args
         assert "charge target unavailable" in kwargs["attributes"]["plan"]
-        sched.call_service.assert_not_called()
+        _assert_no_mode_set(sched)
 
     def test_deadline_in_past_publishes_status(self, sched, mocker):
         past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
@@ -197,7 +209,7 @@ class TestReplanEarlyExits:
 
         args, kwargs = sched.set_state.call_args
         assert "Deadline passed" in kwargs["attributes"]["plan"]
-        sched.call_service.assert_not_called()
+        _assert_no_mode_set(sched)
 
     def test_deadline_in_past_does_not_change_charge_mode(self, sched, mocker):
         past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
@@ -206,7 +218,7 @@ class TestReplanEarlyExits:
 
         sched._replan()
 
-        sched.call_service.assert_not_called()
+        _assert_no_mode_set(sched)
 
     def test_target_already_reached_sets_pure_solar(self, sched, mocker):
         _setup_states(sched, soc="85", target="80", mode="Smart")
@@ -214,7 +226,7 @@ class TestReplanEarlyExits:
 
         sched._replan()
 
-        sched.call_service.assert_called_once_with(
+        sched.call_service.assert_any_call(
             "select/select_option",
             entity_id="select.mode",
             option="PureSolar",
@@ -226,7 +238,7 @@ class TestReplanEarlyExits:
 
         sched._replan()
 
-        sched.call_service.assert_called_once_with(
+        sched.call_service.assert_any_call(
             "select/select_option",
             entity_id="select.mode",
             option="PureSolar",
@@ -290,7 +302,7 @@ class TestReplanPlanning:
 
         sched._replan()
 
-        sched.call_service.assert_not_called()
+        _assert_no_mode_set(sched)
 
 
 # ---------------------------------------------------------------------------
@@ -484,3 +496,109 @@ class TestSetMode:
         log_msg = sched.log.call_args[0][0]
         assert "PureSolar" in log_msg
         assert "SmartSolar" in log_msg
+
+
+# ---------------------------------------------------------------------------
+# _read_soc_fallback()
+# ---------------------------------------------------------------------------
+
+class TestReadSocFallback:
+    def test_returns_none_when_override_unavailable(self, sched):
+        sched.get_state.return_value = "unavailable"
+        assert sched._read_soc_fallback() is None
+
+    def test_returns_none_when_override_none(self, sched):
+        sched.get_state.return_value = None
+        assert sched._read_soc_fallback() is None
+
+    def test_base_soc_when_no_session_energy(self, sched):
+        def _get_state(entity_id):
+            return {"input_number.soc_override": "60", "sensor.session_energy_kwh": "0"}.get(entity_id)
+        sched.get_state.side_effect = _get_state
+        assert sched._read_soc_fallback() == pytest.approx(60.0)
+
+    def test_adds_session_energy_to_base_soc(self, sched):
+        # 5.8 kWh on 58 kWh battery = +10%
+        def _get_state(entity_id):
+            return {"input_number.soc_override": "60", "sensor.session_energy_kwh": "5.8"}.get(entity_id)
+        sched.get_state.side_effect = _get_state
+        assert sched._read_soc_fallback() == pytest.approx(70.0)
+
+    def test_capped_at_100(self, sched):
+        # 95% + 10 kWh / 58 kWh * 100 ≈ 95 + 17.2 → capped at 100
+        def _get_state(entity_id):
+            return {"input_number.soc_override": "95", "sensor.session_energy_kwh": "10.0"}.get(entity_id)
+        sched.get_state.side_effect = _get_state
+        assert sched._read_soc_fallback() == pytest.approx(100.0)
+
+
+# ---------------------------------------------------------------------------
+# _on_power_change()
+# ---------------------------------------------------------------------------
+
+class TestOnPowerChange:
+    def test_first_call_stores_power_without_accumulating(self, sched):
+        sched._on_power_change("entity", None, None, "5500", {})
+
+        sched.set_state.assert_not_called()
+        assert sched._last_power_kw == pytest.approx(5.5)
+
+    def test_watts_converted_to_kw(self, sched):
+        sched._on_power_change("entity", None, None, "11000", {})
+        assert sched._last_power_kw == pytest.approx(11.0)
+
+    def test_accumulates_energy_after_first_reading(self, sched):
+        sched._last_power_kw = 11.0
+        sched._last_power_time = datetime.now() - timedelta(hours=1)
+        sched.get_state.return_value = "0"
+
+        sched._on_power_change("entity", None, None, "5500", {})
+
+        sched.set_state.assert_called_once()
+        args, kwargs = sched.set_state.call_args
+        assert args[0] == "sensor.session_energy_kwh"
+        assert kwargs["state"] == pytest.approx(11.0, abs=0.01)
+
+    def test_zero_previous_power_does_not_accumulate(self, sched):
+        sched._last_power_kw = 0.0
+        sched._last_power_time = datetime.now() - timedelta(hours=1)
+
+        sched._on_power_change("entity", None, None, "5500", {})
+
+        sched.set_state.assert_not_called()
+
+    def test_unavailable_stored_as_zero_kw(self, sched):
+        sched._last_power_kw = 0.0
+        sched._last_power_time = datetime.now() - timedelta(minutes=1)
+        sched.get_state.return_value = "0"
+
+        sched._on_power_change("entity", None, None, "unavailable", {})
+
+        assert sched._last_power_kw == 0.0
+
+    def test_none_new_stored_as_zero_kw(self, sched):
+        sched._on_power_change("entity", None, None, None, {})
+        assert sched._last_power_kw == 0.0
+
+
+# ---------------------------------------------------------------------------
+# _on_cable_disconnect() / _reset_session_energy()
+# ---------------------------------------------------------------------------
+
+class TestOnCableDisconnect:
+    def test_resets_session_energy_sensor_to_zero(self, sched):
+        sched._on_cable_disconnect("entity", None, "on", "off", {})
+
+        sched.set_state.assert_called_once()
+        args, kwargs = sched.set_state.call_args
+        assert args[0] == "sensor.session_energy_kwh"
+        assert kwargs["state"] == 0.0
+
+    def test_clears_tracking_variables(self, sched):
+        sched._last_power_kw = 11.0
+        sched._last_power_time = datetime.now()
+
+        sched._on_cable_disconnect("entity", None, "on", "off", {})
+
+        assert sched._last_power_kw is None
+        assert sched._last_power_time is None

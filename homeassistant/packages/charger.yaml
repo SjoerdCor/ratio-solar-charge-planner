@@ -15,6 +15,13 @@ input_number:
     initial: 80
     unit_of_measurement: "%"
     icon: mdi:battery-charging-80
+  soc_override:
+    name: Current SoC (%)
+    min: 0
+    max: 100
+    step: 1
+    unit_of_measurement: "%"
+    icon: mdi:battery
 
 input_datetime:
   charge_by:
