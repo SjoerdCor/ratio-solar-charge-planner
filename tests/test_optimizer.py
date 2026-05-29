@@ -468,3 +468,57 @@ class TestScenarios:
 
         selected = select_slots_forced(candidates)
         assert mode_for_current_slot(selected, now) == "Smart"
+
+    def test_solar_in_current_hour_selected_as_pure_solar_immediately(self):
+        # Noon, 3 kWh solar available right now, small topup needed.
+        # Expected: current slot selected as PureSolar — don't switch to Smart.
+        now = datetime(2025, 6, 1, 12, 0)
+        solar = {(now + timedelta(hours=1)).strftime("%Y-%m-%d %H:00:00"): 3.0}
+        energy_needed = (80 - 75) / 100 * _BATTERY_KWH
+
+        candidates = build_candidates(now, now + timedelta(days=2), solar, POWER, HOURLY_RATES)
+        selected = select_slots(candidates, energy_needed)
+
+        current_slot = next((s for s in selected if s["slot"] == now), None)
+        assert current_slot is not None, "Current slot should be in the plan"
+        assert current_slot["mode"] == "PureSolar"
+        assert mode_for_current_slot(selected, now) == "PureSolar"
+
+    def test_no_solar_prefers_night_rate_over_day_rate(self):
+        # Evening (20:00, day rate), 2 days to charge 30->80%, no solar.
+        # Expected: all selected slots at night rate (23 ct); don't charge now at 27 ct.
+        now = _SCENARIO_NOW
+        energy_needed = (80 - 30) / 100 * _BATTERY_KWH
+
+        candidates = build_candidates(now, now + timedelta(days=2), {}, POWER, HOURLY_RATES)
+        selected = select_slots(candidates, energy_needed)
+
+        assert mode_for_current_slot(selected, now) == "PureSolar"
+        assert all(s["effective_price"] == pytest.approx(NIGHT) for s in selected)
+
+    def test_solar_after_deadline_forces_grid_charge_now(self):
+        # Evening, large charge needed, deadline in 4 hours, solar only from tomorrow.
+        # Expected: charges with Smart now — cannot wait for solar that arrives after deadline.
+        now = _SCENARIO_NOW
+        solar = _solar_tomorrow(now)
+        energy_needed = (80 - 30) / 100 * _BATTERY_KWH
+
+        candidates = build_candidates(now, now + timedelta(hours=4), solar, POWER, HOURLY_RATES)
+        selected = select_slots(candidates, energy_needed)
+
+        assert mode_for_current_slot(selected, now) == "Smart"
+        assert not any(s["mode"] == "PureSolar" for s in selected)
+
+    def test_deadline_before_sunrise_uses_night_not_solar(self):
+        # Evening, small topup needed, deadline 07:00 tomorrow (solar starts 09:00).
+        # Expected: picks cheap night slot — solar slots are excluded as they fall after deadline.
+        now = _SCENARIO_NOW
+        solar = _solar_tomorrow(now)
+        deadline = datetime(2025, 6, 2, 7, 0)
+        energy_needed = (80 - 75) / 100 * _BATTERY_KWH
+
+        candidates = build_candidates(now, deadline, solar, POWER, HOURLY_RATES)
+        selected = select_slots(candidates, energy_needed)
+
+        assert not any(s["mode"] == "PureSolar" for s in selected)
+        assert all(s["effective_price"] == pytest.approx(NIGHT) for s in selected)
