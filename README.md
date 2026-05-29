@@ -31,16 +31,9 @@ Go to **Settings → Add-ons**, search for **Terminal & SSH** and install it. Cl
 
 ### Step 3 — Clone the repo (in Terminal)
 
-First create a Personal Access Token on GitHub:
-- Choose **Tokens (classic)**
-- Check only `repo`
-- Set an expiry date (90 days recommended)
-
-Then clone the repo:
-
 ```bash
 cd /config
-git clone https://<your-token>@github.com/sjoerdcor/ratio-solar-charge-planner.git
+git clone https://github.com/sjoerdcor/ratio-solar-charge-planner.git
 ```
 
 ### Step 4 — Set up apps, helpers and dashboard (in Terminal)
@@ -49,7 +42,7 @@ This step creates **one-time symlinks** so that `git pull` is enough for all fut
 
 ```bash
 cd /config/ratio-solar-charge-planner && git pull && \
-ln -sf /homeassistant/ratio-solar-charge-planner/appdaemon/apps/charger \
+ln -sf /homeassistant/ratio-solar-charge-planner/apps/charger \
    /addon_configs/a0d7b954_appdaemon/apps/charger && \
 mkdir -p /config/packages && \
 ln -sf /config/ratio-solar-charge-planner/homeassistant/packages/charger.yaml \

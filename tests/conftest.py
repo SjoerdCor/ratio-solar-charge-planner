@@ -14,7 +14,7 @@ import types
 from pathlib import Path
 
 # Make 'charger' importable as a package (relative imports need the parent on path)
-_APPS_DIR = Path(__file__).parent.parent / "appdaemon" / "apps"
+_APPS_DIR = Path(__file__).parent.parent / "apps"
 if str(_APPS_DIR) not in sys.path:
     sys.path.insert(0, str(_APPS_DIR))
 
