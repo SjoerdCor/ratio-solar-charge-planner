@@ -227,6 +227,16 @@ The dashboard shows when `soc_override` was last updated so you can tell whether
 
 ---
 
+## Known limitations
+
+- **Solar forecast horizon**: Forecast.Solar provides today and tomorrow only. Plans beyond that window assume no solar production.
+- **Fixed tariffs only**: Dynamic tariffs (Tibber, EPEX) are not yet supported.
+- **Charging losses not modelled**: The car's onboard charger (OBC) converts AC to DC at roughly 90–95% efficiency. The planner assumes 100%, so it may schedule one slot too few for large sessions (> 30 kWh).
+- **Concurrent household consumption**: The solar forecast reflects total panel output. If appliances are running during solar hours, less reaches the car. SmartSolar handles this at runtime (the charger tops up from the grid), but the planned effective price is slightly optimistic.
+- **State of Health (SoH) not configurable**: The planner uses the configured `battery_kwh` as usable capacity. Battery degradation is not accounted for.
+
+---
+
 ## Roadmap
 
 - [x] Solar forecast via Forecast.Solar (today + tomorrow)
