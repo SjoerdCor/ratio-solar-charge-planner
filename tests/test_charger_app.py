@@ -321,19 +321,19 @@ class TestPublishPlan:
         }
 
     def test_empty_selected_shows_no_slots_message(self, sched):
-        sched._publish_plan([], soc_start=50.0, soc_target=80.0)
+        sched._publish_plan([], soc_start=50.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0))
         args, kwargs = sched.set_state.call_args
         assert "No charging slots planned" in kwargs["attributes"]["plan"]
 
     def test_warning_prepended_when_provided(self, sched):
-        sched._publish_plan([], soc_start=50.0, soc_target=80.0, warning="Test warning")
+        sched._publish_plan([], soc_start=50.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0), warning="Test warning")
         args, kwargs = sched.set_state.call_args
         plan = kwargs["attributes"]["plan"]
         assert plan.startswith("Test warning")
 
     def test_running_soc_increases_per_slot(self, sched):
         slot = self._make_slot(15, energy=5.8)  # 5.8 / 58 kWh = +10%
-        sched._publish_plan([slot], soc_start=70.0, soc_target=80.0)
+        sched._publish_plan([slot], soc_start=70.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0))
         args, kwargs = sched.set_state.call_args
         plan = kwargs["attributes"]["plan"]
         assert "80%" in plan
@@ -341,7 +341,7 @@ class TestPublishPlan:
     def test_running_soc_capped_at_target(self, sched):
         # Energy would overshoot target; check it's capped
         slot = self._make_slot(15, energy=11.0)  # 11/58 * 100 ≈ 19%
-        sched._publish_plan([slot], soc_start=75.0, soc_target=80.0)
+        sched._publish_plan([slot], soc_start=75.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0))
         args, kwargs = sched.set_state.call_args
         plan = kwargs["attributes"]["plan"]
         assert "80%" in plan
@@ -350,7 +350,7 @@ class TestPublishPlan:
     def test_partial_slot_end_time_not_full_hour(self, sched):
         # 5 kWh at 11 kW → 5/11 hours ≈ 27 minutes, not a full hour
         slot = self._make_slot(15, energy=5.0)
-        sched._publish_plan([slot], soc_start=70.0, soc_target=80.0)
+        sched._publish_plan([slot], soc_start=70.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0))
         args, kwargs = sched.set_state.call_args
         plan = kwargs["attributes"]["plan"]
         # Start is 15:00, end should NOT be 16:00
@@ -358,7 +358,7 @@ class TestPublishPlan:
 
     def test_plan_contains_mode_and_price(self, sched):
         slot = self._make_slot(22, mode="Smart", energy=11.0)
-        sched._publish_plan([slot], soc_start=25.0, soc_target=80.0)
+        sched._publish_plan([slot], soc_start=25.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0))
         args, kwargs = sched.set_state.call_args
         plan = kwargs["attributes"]["plan"]
         assert "Smart" in plan

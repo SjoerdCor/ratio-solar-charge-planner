@@ -46,7 +46,10 @@ ln -sf /homeassistant/ratio-solar-charge-planner/apps/charger \
    /addon_configs/a0d7b954_appdaemon/apps/charger && \
 mkdir -p /config/packages && \
 ln -sf /config/ratio-solar-charge-planner/homeassistant/packages/charger.yaml \
-   /config/packages/charger.yaml
+   /config/packages/charger.yaml && \
+mkdir -p /config/www && \
+ln -sf /config/ratio-solar-charge-planner/www/laadplan.html \
+   /config/www/laadplan.html
 ```
 
 Then add the following sections **once** to `/config/configuration.yaml`. If the `homeassistant:` section already exists, only add the `packages:` line.
@@ -190,7 +193,13 @@ The symlinks ensure that the app code, helpers and dashboard all update automati
 
 ## Dashboard
 
+### Lovelace dashboard
+
 The dashboard is in `homeassistant/dashboard.yaml` and is linked automatically during installation (Step 3). Changes are visible after a `git pull` and a HA restart.
+
+### HTML dashboard
+
+The charge plan is also available as a mobile-friendly page at `http://homeassistant.local/local/laadplan.html`. No login required — open it directly in any browser on your local network. The page refreshes automatically every minute.
 
 Use **Replan** to recalculate the charge plan immediately, without waiting for the next full hour.
 

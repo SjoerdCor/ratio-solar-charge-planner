@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Charge Plan</title>
+  <style>
+    :root {
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --text: #1c1c1e;
+      --muted: #8e8e93;
+      --border: #e5e5ea;
+      --bar-bg: #e5e5ea;
+      --green: #34c759;
+      --orange: #ff9500;
+      --blue: #007aff;
+      --red: #ff3b30;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000000;
+        --surface: #1c1c1e;
+        --text: #f2f2f7;
+        --muted: #636366;
+        --border: #2c2c2e;
+        --bar-bg: #2c2c2e;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 14px;
+      font-size: 14px;
+    }
+    header { margin-bottom: 12px; }
+    h1 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+    .meta strong { color: var(--text); }
+    .warning {
+      color: var(--red);
+      font-size: 13px;
+      margin-bottom: 10px;
+      display: none;
+    }
+    .slot {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 7px;
+      display: grid;
+      grid-template-columns: 100px 1fr 38px;
+      gap: 10px;
+      align-items: center;
+    }
+    .time { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+    .center { display: flex; flex-direction: column; gap: 5px; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.01em;
+      width: fit-content;
+    }
+    .PureSolar  { background: var(--green); }
+    .SmartSolar { background: var(--orange); }
+    .Smart      { background: var(--blue); }
+    .bar-track { height: 5px; background: var(--bar-bg); border-radius: 3px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+    .soc { text-align: right; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .empty { color: var(--muted); font-size: 13px; padding: 4px 0; }
+    footer { margin-top: 10px; font-size: 11px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Charge Plan</h1>
+    <div class="meta" id="meta"></div>
+  </header>
+  <div id="warning" class="warning"></div>
+  <div id="slots"></div>
+  <footer id="footer"></footer>
+
+  <script>
+    const MODE_COLOR = {
+      PureSolar:  'var(--green)',
+      SmartSolar: 'var(--orange)',
+      Smart:      'var(--blue)',
+    };
+
+    function fmtDeadline(iso) {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleString('en-GB', {
+        weekday: 'short', day: 'numeric', month: 'short',
+        hour: '2-digit', minute: '2-digit',
+      });
+    }
+
+    function fmtTime(iso) {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleTimeString('en-GB', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      });
+    }
+
+    function render(data) {
+      const slots = Array.isArray(data.slots) ? data.slots : [];
+
+      const parts = [];
+      if (data.soc_start != null) parts.push(`Current: <strong>${data.soc_start}%</strong>`);
+      if (data.soc_target != null) parts.push(`Target: <strong>${data.soc_target}%</strong>`);
+      if (data.deadline)           parts.push(`Ready by: <strong>${fmtDeadline(data.deadline)}</strong>`);
+      document.getElementById('meta').innerHTML = parts.join(' &nbsp;·&nbsp; ');
+
+      const warnEl = document.getElementById('warning');
+      if (data.warning) {
+        warnEl.textContent   = data.warning;
+        warnEl.style.display = '';
+      } else {
+        warnEl.style.display = 'none';
+      }
+
+      const container = document.getElementById('slots');
+      if (!slots.length) {
+        container.innerHTML = `<div class="empty">${data.status || 'No charge plan available'}</div>`;
+      } else {
+        const target = data.soc_target || 100;
+        container.innerHTML = slots.map(s => {
+          const pct   = Math.min(100, Math.round((s.soc_after / target) * 100));
+          const color = MODE_COLOR[s.mode] || 'var(--muted)';
+          return `
+<div class="slot">
+  <div class="time">${s.start} – ${s.end}</div>
+  <div class="center">
+    <span class="badge ${s.mode}">${s.mode}</span>
+    <div class="bar-track">
+      <div class="bar-fill" style="width:${pct}%;background:${color}"></div>
+    </div>
+  </div>
+  <div class="soc">${Math.round(s.soc_after)}%</div>
+</div>`;
+        }).join('');
+      }
+
+      if (data.updated) {
+        document.getElementById('footer').textContent = `Updated ${fmtTime(data.updated)}`;
+      }
+    }
+
+    function load() {
+      fetch('/local/charge_plan.json')
+        .then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        })
+        .then(render)
+        .catch(err => {
+          document.getElementById('slots').innerHTML =
+            `<div class="empty">Could not load charge plan: ${err.message}</div>`;
+        });
+    }
+
+    load();
+    setInterval(load, 60_000);
+  </script>
+</body>
+</html>

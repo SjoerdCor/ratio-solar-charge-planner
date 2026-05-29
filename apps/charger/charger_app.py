@@ -11,6 +11,7 @@ Deployment: git clone / git pull on the HA host, symlink
 apps/charger/ into the AppDaemon apps directory.
 """
 
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from .tariff import parse_tariff
 
 _SOC_OVERRIDE = "input_number.soc_override"
 _SESSION_ENERGY = "sensor.session_energy_kwh"
+_PLAN_JSON = Path("/homeassistant/www/charge_plan.json")
 
 
 class ChargeScheduler(hass.Hass):
@@ -166,7 +168,7 @@ class ChargeScheduler(hass.Hass):
                 f"{energy_needed_kwh:.1f} kWh needed. Charging as fast as possible."
             )
             self.log(warning, level="WARNING")
-            self._publish_plan(selected, soc, target, warning=warning)
+            self._publish_plan(selected, soc, target, deadline, warning=warning)
             self._set_mode(mode_for_current_slot(selected))
             return
 
@@ -184,7 +186,7 @@ class ChargeScheduler(hass.Hass):
             f"planned={sum(s['energy_kwh'] for s in selected):.1f} kWh  "
             f"current mode -> {mode}"
         )
-        self._publish_plan(selected, soc, target)
+        self._publish_plan(selected, soc, target, deadline)
         self._set_mode(mode)
 
     def _on_power_change(self, entity, attribute, old, new, kwargs):
@@ -258,11 +260,17 @@ class ChargeScheduler(hass.Hass):
         return estimated
 
     def _publish_plan(
-        self, selected: list, soc_start: float, soc_target: float, warning: str = ""
+        self,
+        selected: list,
+        soc_start: float,
+        soc_target: float,
+        deadline: datetime,
+        warning: str = "",
     ):
-        """Write the charge plan to sensor.charge_plan so it can be shown on the dashboard."""
+        """Write the charge plan to sensor.charge_plan and www/charge_plan.json."""
         running_soc = soc_start
         lines = []
+        json_slots = []
         for s in selected:
             running_soc = min(
                 soc_target, running_soc + s["energy_kwh"] / self.battery_kwh * 100
@@ -275,11 +283,50 @@ class ChargeScheduler(hass.Hass):
                 f"  {s['effective_price']:.1f} ct/kWh"
                 f"  -> {running_soc:.0f}% (+{s['energy_kwh']:.1f} kWh)"
             )
+            json_slots.append({
+                "start": s["slot"].strftime("%H:%M"),
+                "end": end.strftime("%H:%M"),
+                "mode": s["mode"],
+                "effective_price": round(s["effective_price"], 1),
+                "energy_kwh": round(s["energy_kwh"], 1),
+                "soc_after": round(running_soc, 1),
+            })
 
         plan_text = "\n".join(lines) if lines else "No charging slots planned"
         if warning:
             plan_text = warning + "\n\n" + plan_text
         self._publish_status(plan_text)
+
+        self._write_plan_json(
+            soc_start=round(soc_start, 1),
+            soc_target=round(soc_target, 1),
+            deadline=deadline,
+            slots=json_slots,
+            warning=warning or None,
+        )
+
+    def _write_plan_json(
+        self,
+        soc_start: float,
+        soc_target: float,
+        deadline: datetime,
+        slots: list,
+        warning: str | None = None,
+    ):
+        """Write the charge plan as JSON to /homeassistant/www/ for the HTML dashboard."""
+        data = {
+            "soc_start": soc_start,
+            "soc_target": soc_target,
+            "deadline": deadline.isoformat(timespec="seconds"),
+            "warning": warning,
+            "updated": datetime.now().isoformat(timespec="seconds"),
+            "slots": slots,
+        }
+        try:
+            _PLAN_JSON.parent.mkdir(parents=True, exist_ok=True)
+            _PLAN_JSON.write_text(json.dumps(data), encoding="utf-8")
+        except Exception as exc:
+            self.log(f"Could not write plan JSON: {exc}", level="WARNING")
 
     def _publish_status(self, text: str):
         """Write a status message to sensor.charge_plan."""
