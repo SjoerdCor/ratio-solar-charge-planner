@@ -110,7 +110,7 @@ charger:
       tilt: 35
 
   entities:
-    soc_sensor:         "sensor.volkswagen_YOUR_SERIAL_state_of_charge"
+    soc_sensor:         "sensor.YOUR_EV_state_of_charge"
     cable_sensor:       "binary_sensor.ratio_YOUR_SERIAL_vehicle_connected"
     charge_mode_select: "select.ratio_YOUR_SERIAL_charge_mode"
     charge_target:      "input_number.charge_target"
