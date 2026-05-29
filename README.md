@@ -102,11 +102,11 @@ charger:
   panels:
     - name: SE
       kwp: 2.58
-      azimuth: -45       # degrees relative to south; west = positive, east = negative
-      tilt: 35
+      azimuth: -45       # degrees from south: 0=S, -90=E, +90=W, -45=SE, +45=SW
+      tilt: 35           # degrees from horizontal: 0=flat, 90=vertical
     - name: NE
       kwp: 1.29
-      azimuth: -135
+      azimuth: -135      # -135=NE
       tilt: 35
 
   entities:
@@ -130,6 +130,27 @@ charger:
 ```
 
 Save with `Ctrl+X → Y → Enter`.
+
+#### Configuring the panels
+
+Each entry under `panels` describes one roof section (array). You can add as many as you have.
+
+| Field | What to fill in |
+|---|---|
+| `name` | Any label — used only in logs |
+| `kwp` | Peak power of the array in kWp (kilowatt-peak) |
+| `azimuth` | Direction the panels face, in degrees from south: `0` = south, `-90` = east, `+90` = west, `-45` = south-east, `+45` = south-west, `-135` = north-east |
+| `tilt` | Angle from horizontal: `0` = flat roof, `35` = typical sloped roof, `90` = vertical wall |
+
+If your roof has two differently oriented sections (e.g. one facing SE and one facing NE), list both — the app combines their forecasts.
+
+**No solar panels?** You can omit the `panels` key entirely or leave the list empty:
+
+```yaml
+  panels: []
+```
+
+The app still runs, but without a solar forecast it can only schedule Smart (grid) charging — PureSolar and SmartSolar modes are never used.
 
 #### Configuring the tariff
 
