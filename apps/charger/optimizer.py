@@ -109,10 +109,10 @@ def _best_per_slot(candidates: List[dict]) -> Dict[datetime, dict]:
     return best
 
 
-def select_slots(candidates: List[dict], energy_needed_kwh: float) -> List[dict]:
+def _select_cheapest(candidates: List[dict], energy_needed_kwh: float) -> List[dict]:
     """Pick the cheapest mode per slot, then greedily fill energy need in price order."""
-    # The second sort key means to charge as quickly as possible for the lowest price
-    # So you have some slack if there is less solar power than expected
+    # Second sort key: earliest slot wins on equal price, so slack stays at the end
+    # if solar delivers less than forecast.
     ranked = sorted(
         _best_per_slot(candidates).values(),
         key=lambda c: (c["effective_price"], c["slot"]),
@@ -130,6 +130,39 @@ def select_slots(candidates: List[dict], energy_needed_kwh: float) -> List[dict]
         planned_kwh += c["energy_kwh"]
 
     return sorted(selected, key=lambda c: c["slot"])
+
+
+def select_slots(
+    candidates: List[dict],
+    energy_needed_kwh: float,
+    immediate_kwh: float = 0.0,
+) -> List[dict]:
+    """Pick slots to deliver energy_needed_kwh as cheaply as possible.
+
+    immediate_kwh: energy that must be charged first using Smart (grid) mode,
+    regardless of price — used to reach a minimum SoC before optimising the rest.
+    """
+    forced: List[dict] = []
+    if immediate_kwh > 0:
+        smart_sorted = sorted(
+            (c for c in candidates if c["mode"] == "Smart"),
+            key=lambda c: c["slot"],
+        )
+        remaining = min(immediate_kwh, energy_needed_kwh)
+        for c in smart_sorted:
+            if remaining <= 0:
+                break
+            if remaining < c["energy_kwh"]:
+                c = {**c, "energy_kwh": remaining}
+            forced.append(c)
+            remaining -= c["energy_kwh"]
+
+    forced_slots = {c["slot"] for c in forced}
+    remaining_candidates = [c for c in candidates if c["slot"] not in forced_slots]
+    remaining_energy = max(0.0, energy_needed_kwh - sum(c["energy_kwh"] for c in forced))
+
+    optimized = _select_cheapest(remaining_candidates, remaining_energy)
+    return sorted(forced + optimized, key=lambda c: c["slot"])
 
 
 def max_available_energy(candidates: List[dict]) -> float:

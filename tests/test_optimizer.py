@@ -321,6 +321,70 @@ class TestSelectSlots:
         assert result[0]["mode"] == "SmartSolar"
 
 
+class TestSelectSlotsWithMinimum:
+    """Tests for the immediate_kwh parameter (minimum SoC feature)."""
+
+    def test_zero_immediate_behaves_identically(self):
+        candidates = [_candidate(15, DAY), _candidate(22, NIGHT)]
+        assert select_slots(candidates, 11.0, 0.0) == select_slots(candidates, 11.0)
+
+    def test_immediate_forces_earliest_smart_slot_regardless_of_price(self):
+        # Without immediate, optimizer would pick 22:00 (cheaper night rate).
+        # With immediate, 14:00 is forced first.
+        candidates = [_candidate(14, DAY), _candidate(22, NIGHT)]
+        result = select_slots(candidates, 11.0, immediate_kwh=11.0)
+        assert len(result) == 1
+        assert result[0]["slot"] == _slot_at(14)
+        assert result[0]["mode"] == "Smart"
+
+    def test_immediate_uses_smart_even_when_pure_solar_available_in_same_slot(self):
+        slot = _slot_at(14)
+        candidates = [
+            {"slot": slot, "mode": "PureSolar", "effective_price": 0.0, "power_kw": 3.0, "energy_kwh": 3.0},
+            {"slot": slot, "mode": "Smart", "effective_price": DAY, "power_kw": 11.0, "energy_kwh": 11.0},
+            _candidate(15, DAY),
+        ]
+        result = select_slots(candidates, 14.0, immediate_kwh=5.0)
+        at_14 = next(c for c in result if c["slot"] == slot)
+        assert at_14["mode"] == "Smart"
+        assert at_14["energy_kwh"] == pytest.approx(5.0)
+
+    def test_immediate_partial_slot_blocks_rest_of_that_hour_for_optimization(self):
+        # Force 5 kWh at 14:00 (partial). Remaining 10 kWh must come from 15:00,
+        # not from the rest of the 14:00 slot.
+        candidates = [_candidate(14, DAY), _candidate(15, NIGHT)]
+        result = select_slots(candidates, 15.0, immediate_kwh=5.0)
+        forced = next(c for c in result if c["slot"] == _slot_at(14))
+        assert forced["energy_kwh"] == pytest.approx(5.0)
+        rest = next(c for c in result if c["slot"] == _slot_at(15))
+        assert rest["energy_kwh"] == pytest.approx(10.0)
+
+    def test_immediate_covers_all_energy_selects_only_forced_slots(self):
+        # immediate_kwh >= energy_needed_kwh: forced phase covers everything.
+        candidates = [_candidate(14, DAY), _candidate(22, NIGHT)]
+        result = select_slots(candidates, 5.0, immediate_kwh=11.0)
+        assert len(result) == 1
+        assert result[0]["slot"] == _slot_at(14)
+        assert result[0]["energy_kwh"] == pytest.approx(5.0)
+
+    def test_immediate_followed_by_cheapest_optimized_slots(self):
+        # Forced: 14:00 Smart (expensive). Remaining 14 kWh optimized:
+        # prefers 22:00 (cheap) over 15:00 (expensive).
+        candidates = [_candidate(14, DAY), _candidate(15, DAY), _candidate(22, NIGHT)]
+        result = select_slots(candidates, 25.0, immediate_kwh=11.0)
+        total = sum(c["energy_kwh"] for c in result)
+        assert total == pytest.approx(25.0)
+        slots = [c["slot"] for c in result]
+        assert _slot_at(14) in slots  # forced
+        assert _slot_at(22) in slots  # cheapest available after 14 blocked
+
+    def test_result_is_sorted_chronologically(self):
+        candidates = [_candidate(h, DAY) for h in range(14, 19)]
+        result = select_slots(candidates, 33.0, immediate_kwh=11.0)
+        slots = [c["slot"] for c in result]
+        assert slots == sorted(slots)
+
+
 # ---------------------------------------------------------------------------
 # max_available_energy
 # ---------------------------------------------------------------------------

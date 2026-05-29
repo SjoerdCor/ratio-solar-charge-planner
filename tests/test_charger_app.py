@@ -59,6 +59,7 @@ def sched(mocker):
     s.cable_sensor = "binary_sensor.cable"
     s.charge_mode_select = "select.mode"
     s.charge_target_entity = "input_number.charge_target"
+    s.charge_minimum_entity = "input_number.charge_minimum"
     s.charge_by_entity = "input_datetime.charge_by"
     s.battery_kwh = BATTERY_KWH
     s.charging_power_kw = CHARGING_POWER_KW

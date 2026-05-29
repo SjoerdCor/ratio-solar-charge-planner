@@ -15,6 +15,14 @@ input_number:
     initial: 80
     unit_of_measurement: "%"
     icon: mdi:battery-charging-80
+  charge_minimum:
+    name: Charge immediately to (%)
+    min: 0
+    max: 100
+    step: 5
+    initial: 0
+    unit_of_measurement: "%"
+    icon: mdi:battery-charging-low
   soc_override:
     name: Current SoC (%)
     min: 0

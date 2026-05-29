@@ -15,6 +15,8 @@ views:
             entities:
               - entity: input_number.charge_target
                 name: Target SoC
+              - entity: input_number.charge_minimum
+                name: Charge immediately to
               - entity: input_number.soc_override
                 name: Current SoC (fallback)
                 secondary_info: last-changed

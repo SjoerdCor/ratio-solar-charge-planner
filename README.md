@@ -194,6 +194,8 @@ The dashboard is in `homeassistant/dashboard.yaml` and is linked automatically d
 
 Use **Replan** to recalculate the charge plan immediately, without waiting for the next full hour.
 
+**Charge immediately to** sets a minimum SoC that must be reached as soon as possible using grid (Smart) charging, before the optimizer takes over for the rest. Set it to the minimum you need to be able to drive, for example 30% if that covers your daily commute. Set to 0 to disable (default).
+
 **Current SoC (fallback)** shows the SoC value the app uses when the real sensor is unavailable. When the sensor works, this field is kept in sync automatically. When it doesn't, you can set it manually before plugging in. The timestamp shows when it was last updated.
 
 ---
@@ -205,7 +207,8 @@ Use **Replan** to recalculate the charge plan immediately, without waiting for t
 **Optimizer** (runs every hour via AppDaemon):
 - Calculates how many kWh are still needed before the deadline
 - Builds candidates per hour: `Smart` (full grid power), `SmartSolar` (minimum 1.4 kW, grid supplement when solar falls short) and `PureSolar` (solar only, requires at least 1.4 kW production)
-- Picks the cheapest hours based on fixed tariffs and solar forecast
+- If a minimum SoC is set and not yet reached, fills the earliest Smart slots first to cover that amount (phase 1)
+- Picks the cheapest remaining hours for the rest of the energy (phase 2)
 - Sets the mode for the current hour
 
 ---

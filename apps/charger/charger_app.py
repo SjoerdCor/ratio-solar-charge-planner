@@ -39,6 +39,7 @@ class ChargeScheduler(hass.Hass):
     cable_sensor: str
     charge_mode_select: str
     charge_target_entity: str
+    charge_minimum_entity: str
     charge_by_entity: str
     battery_kwh: float
     charging_power_kw: float
@@ -56,6 +57,7 @@ class ChargeScheduler(hass.Hass):
         self.power_sensor = f"sensor.ratio_{serial}_actual_charging_power"
 
         self.charge_target_entity = "input_number.charge_target"
+        self.charge_minimum_entity = "input_number.charge_minimum"
         self.charge_by_entity = "input_datetime.charge_by"
 
         vehicle = self.args["vehicle"]
@@ -122,10 +124,13 @@ class ChargeScheduler(hass.Hass):
             self._publish_status("Deadline passed — please set a new deadline")
             return
 
+        minimum = self._read_charge_minimum()
+        immediate_kwh = max(0.0, (minimum - soc) / 100 * self.battery_kwh)
         energy_needed_kwh = (target - soc) / 100 * self.battery_kwh
         self.log(
-            f"SoC={soc:.0f}%  target={target:.0f}%  "
+            f"SoC={soc:.0f}%  target={target:.0f}%  minimum={minimum:.0f}%  "
             f"deadline={deadline:%a %d %b %H:%M}  needed={energy_needed_kwh:.1f} kWh"
+            + (f"  immediate={immediate_kwh:.1f} kWh" if immediate_kwh > 0 else "")
         )
 
         if energy_needed_kwh <= 0:
@@ -165,7 +170,7 @@ class ChargeScheduler(hass.Hass):
             self._set_mode(mode_for_current_slot(selected))
             return
 
-        selected = select_slots(candidates, energy_needed_kwh)
+        selected = select_slots(candidates, energy_needed_kwh, immediate_kwh=immediate_kwh)
 
         if not selected:
             self.log(
@@ -307,6 +312,16 @@ class ChargeScheduler(hass.Hass):
             return float(value)
         except ValueError:
             return None
+
+    def _read_charge_minimum(self) -> float:
+        """Read minimum SoC to charge to immediately (%). Returns 0.0 if unavailable."""
+        value = self.get_state(self.charge_minimum_entity)
+        if value in (None, "unavailable", "unknown"):
+            return 0.0
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
 
     def _read_deadline(self):
         """Read charge deadline from input_datetime; fall back to 7 days from now."""
