@@ -12,7 +12,7 @@ This app makes full use of all three Ratio Solar modes. Based on an hourly solar
 
 - Home Assistant (OS or Supervised)
 - Ratio Solar charge point, connected via the Ratio integration
-- Electric vehicle with a SoC sensor in Home Assistant (most modern EVs support this)
+- Electric vehicle — a SoC sensor in Home Assistant is recommended but not required (see [SoC fallback](#soc-fallback))
 - Solar panels with production data
 
 ---
@@ -194,6 +194,8 @@ The dashboard is in `homeassistant/dashboard.yaml` and is linked automatically d
 
 Use **Replan** to recalculate the charge plan immediately, without waiting for the next full hour.
 
+**Current SoC (fallback)** shows the SoC value the app uses when the real sensor is unavailable. When the sensor works, this field is kept in sync automatically. When it doesn't, you can set it manually before plugging in. The timestamp shows when it was last updated.
+
 ---
 
 ## Charging logic
@@ -205,6 +207,20 @@ Use **Replan** to recalculate the charge plan immediately, without waiting for t
 - Builds candidates per hour: `Smart` (full grid power), `SmartSolar` (minimum 1.4 kW, grid supplement when solar falls short) and `PureSolar` (solar only, requires at least 1.4 kW production)
 - Picks the cheapest hours based on fixed tariffs and solar forecast
 - Sets the mode for the current hour
+
+---
+
+## SoC fallback
+
+The app reads the current state of charge from the sensor configured as `soc_sensor`. Some manufacturers restrict API access in a way that makes this sensor permanently unavailable — Volkswagen is a known example.
+
+When the sensor is unavailable, the app falls back to `input_number.soc_override`:
+
+- **When the real sensor works**: `soc_override` is kept in sync automatically on every replan.
+- **When the sensor is unavailable**: the app estimates SoC from `soc_override` plus the energy charged during the current session, measured via the charger's power sensor.
+- **If the sensor is never available**: set `soc_override` manually in the dashboard each time you plug in. The app tracks charging progress from that starting point.
+
+The dashboard shows when `soc_override` was last updated so you can tell whether the value is current.
 
 ---
 
