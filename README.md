@@ -218,6 +218,18 @@ Use **Replan** to recalculate the charge plan immediately, without waiting for t
 
 ---
 
+## Acknowledgements
+
+This app depends on the [Ratio integration for Home Assistant](https://github.com/aaearon/home-assistant-ratio) by [@aaearon](https://github.com/aaearon), which is built on his [aioratio](https://github.com/aaearon/aioratio) Python library. Without that work, controlling the Ratio charge point from Home Assistant would not be possible.
+
+---
+
+## Disclaimer
+
+This project is an independent community effort and is not affiliated with, endorsed by, or in any way officially connected to Ratio. Use at your own risk.
+
+---
+
 ## License
 
 MIT — free to use, modify and distribute. No warranties, no liability. See [LICENSE](LICENSE).
