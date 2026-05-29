@@ -222,3 +222,9 @@ Use **Replan** to recalculate the charge plan immediately, without waiting for t
 - [x] AppDaemon integration
 - [ ] OpenMeteo as fallback (7 days ahead)
 - [ ] Dynamic tariff (Tibber)
+
+---
+
+## License
+
+MIT — free to use, modify and distribute. No warranties, no liability. See [LICENSE](LICENSE).
