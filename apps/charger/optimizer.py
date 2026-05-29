@@ -39,9 +39,20 @@ def build_candidates(
     within each hour (v1 simplification; actual output varies with cloud cover).
     """
     candidates = []
-    slot = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    slot = now.replace(minute=0, second=0, microsecond=0)
 
-    while slot <= deadline:
+    while slot < deadline:
+        # Fraction of the hour actually available for charging:
+        # - First slot: starts at `now`, not at slot boundary.
+        # - Last slot: ends at `deadline`, not at the next full hour.
+        slot_start = max(slot, now)
+        slot_end = min(slot + timedelta(hours=1), deadline)
+        fraction = (slot_end - slot_start).total_seconds() / 3600
+
+        if fraction <= 0:
+            slot += timedelta(hours=1)
+            continue
+
         # Forecast.Solar timestamps mark the END of a period, so look up slot+1h.
         key = (slot + timedelta(hours=1)).strftime("%Y-%m-%d %H:00:00")
         solar_kwh = solar.get(key, 0.0)
@@ -57,7 +68,7 @@ def build_candidates(
                     "mode": "PureSolar",
                     "effective_price": 0.0,
                     "power_kw": power_kw,
-                    "energy_kwh": power_kw,
+                    "energy_kwh": power_kw * fraction,
                 }
             )
         elif solar_kwh >= SMART_SOLAR_MIN_PV_KWH:
@@ -69,7 +80,7 @@ def build_candidates(
                     "mode": "SmartSolar",
                     "effective_price": (grid_kw * rate) / MIN_CHARGING_KW,
                     "power_kw": MIN_CHARGING_KW,
-                    "energy_kwh": MIN_CHARGING_KW,
+                    "energy_kwh": MIN_CHARGING_KW * fraction,
                 }
             )
 
@@ -79,7 +90,7 @@ def build_candidates(
                 "mode": "Smart",
                 "effective_price": rate,
                 "power_kw": charging_power_kw,
-                "energy_kwh": charging_power_kw,
+                "energy_kwh": charging_power_kw * fraction,
             }
         )
 

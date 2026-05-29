@@ -23,6 +23,8 @@ HOURLY_RATES = {h: (NIGHT if h < 6 or h >= 22 else DAY) for h in range(24)}
 # Fixed reference times used across tests so results are deterministic.
 NOW = datetime(2025, 6, 1, 14, 0)
 NEXT_HOUR = datetime(2025, 6, 1, 15, 0)
+# Solar forecast key for the slot starting at NOW (Forecast.Solar marks END of period).
+NOW_SOLAR_KEY = "2025-06-01 15:00:00"
 
 
 # ---------------------------------------------------------------------------
@@ -42,18 +44,19 @@ class TestBuildCandidates:
         result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
         assert len(result) == 1
         assert result[0]["mode"] == "Smart"
-        assert result[0]["slot"] == NEXT_HOUR
+        assert result[0]["slot"] == NOW
 
     def test_two_hours_produces_two_smart_slots(self):
         deadline = NOW + timedelta(hours=2)
         result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
         assert len(result) == 2
 
-    def test_first_slot_is_next_full_hour_even_with_minutes(self):
-        now_with_minutes = datetime(2025, 6, 1, 14, 45)
+    def test_first_slot_is_current_hour_with_partial_energy(self):
+        now_with_minutes = datetime(2025, 6, 1, 14, 45)  # 15 minutes left in current hour
         deadline = datetime(2025, 6, 1, 16, 0)
         result = build_candidates(now_with_minutes, deadline, {}, POWER, HOURLY_RATES)
-        assert result[0]["slot"] == datetime(2025, 6, 1, 15, 0)
+        first = next(c for c in result if c["slot"] == datetime(2025, 6, 1, 14, 0))
+        assert first["energy_kwh"] == pytest.approx(POWER * 15 / 60)
 
     def test_no_solar_produces_only_smart_candidates(self):
         deadline = NOW + timedelta(hours=3)
@@ -64,7 +67,7 @@ class TestBuildCandidates:
 
     def test_solar_between_thresholds_adds_smart_solar(self):
         # 1.0 kWh is between SMART_SOLAR_MIN_PV_KWH (0.3) and MIN_CHARGING_KW (1.4)
-        solar = {"2025-06-01 16:00:00": 1.0}
+        solar = {NOW_SOLAR_KEY: 1.0}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         modes = {c["mode"] for c in result}
@@ -73,13 +76,13 @@ class TestBuildCandidates:
         assert "PureSolar" not in modes
 
     def test_solar_at_min_pv_threshold_creates_smart_solar(self):
-        solar = {"2025-06-01 16:00:00": SMART_SOLAR_MIN_PV_KWH}
+        solar = {NOW_SOLAR_KEY: SMART_SOLAR_MIN_PV_KWH}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         assert any(c["mode"] == "SmartSolar" for c in result)
 
     def test_solar_just_below_min_pv_threshold_no_smart_solar(self):
-        solar = {"2025-06-01 16:00:00": SMART_SOLAR_MIN_PV_KWH - 0.001}
+        solar = {NOW_SOLAR_KEY: SMART_SOLAR_MIN_PV_KWH - 0.001}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         assert not any(c["mode"] == "SmartSolar" for c in result)
@@ -87,7 +90,7 @@ class TestBuildCandidates:
     def test_smart_solar_effective_price_formula(self):
         # solar = 1.0 kWh → grid_kw = 1.4 - 1.0 = 0.4; total = 1.4 (MIN_CHARGING_KW)
         solar_kwh = 1.0
-        solar = {"2025-06-01 16:00:00": solar_kwh}
+        solar = {NOW_SOLAR_KEY: solar_kwh}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         smart_solar = next(c for c in result if c["mode"] == "SmartSolar")
@@ -100,13 +103,13 @@ class TestBuildCandidates:
     # --- PureSolar (solar >= MIN_CHARGING_KW) ---
 
     def test_solar_at_min_charging_kw_creates_pure_solar(self):
-        solar = {"2025-06-01 16:00:00": MIN_CHARGING_KW}
+        solar = {NOW_SOLAR_KEY: MIN_CHARGING_KW}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         assert any(c["mode"] == "PureSolar" for c in result)
 
     def test_solar_above_min_charging_kw_creates_pure_solar_not_smart_solar(self):
-        solar = {"2025-06-01 16:00:00": 1.5}
+        solar = {NOW_SOLAR_KEY: 1.5}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         modes = {c["mode"] for c in result}
@@ -114,7 +117,7 @@ class TestBuildCandidates:
         assert "SmartSolar" not in modes
 
     def test_pure_solar_effective_price_is_zero(self):
-        solar = {"2025-06-01 16:00:00": 2.0}
+        solar = {NOW_SOLAR_KEY: 2.0}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         pure = next(c for c in result if c["mode"] == "PureSolar")
@@ -122,7 +125,7 @@ class TestBuildCandidates:
 
     def test_pure_solar_power_equals_solar_when_below_charger_max(self):
         solar_kwh = 2.0
-        solar = {"2025-06-01 16:00:00": solar_kwh}
+        solar = {NOW_SOLAR_KEY: solar_kwh}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         pure = next(c for c in result if c["mode"] == "PureSolar")
@@ -131,17 +134,47 @@ class TestBuildCandidates:
 
     def test_pure_solar_power_capped_at_charger_max(self):
         # Solar exceeds charger capacity — should be capped
-        solar = {"2025-06-01 16:00:00": POWER + 5.0}
+        solar = {NOW_SOLAR_KEY: POWER + 5.0}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, solar, POWER, HOURLY_RATES)
         pure = next(c for c in result if c["mode"] == "PureSolar")
         assert pure["power_kw"] == pytest.approx(POWER)
 
+    # --- partial hours ---
+
+    def test_partial_first_slot_energy_proportional_to_remaining_time(self):
+        now = datetime(2025, 6, 1, 14, 30)  # 30 minutes left in current hour
+        deadline = datetime(2025, 6, 1, 16, 0)
+        result = build_candidates(now, deadline, {}, POWER, HOURLY_RATES)
+        first = next(c for c in result if c["slot"] == datetime(2025, 6, 1, 14, 0))
+        assert first["energy_kwh"] == pytest.approx(POWER * 0.5)
+
+    def test_partial_last_slot_energy_proportional_to_time_before_deadline(self):
+        deadline = datetime(2025, 6, 1, 15, 30)  # deadline 30 min into the 15:00 slot
+        result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)
+        last = next(c for c in result if c["slot"] == datetime(2025, 6, 1, 15, 0))
+        assert last["energy_kwh"] == pytest.approx(POWER * 0.5)
+
+    def test_full_hours_between_partial_endpoints_have_full_energy(self):
+        now = datetime(2025, 6, 1, 14, 30)
+        deadline = datetime(2025, 6, 1, 17, 30)
+        result = build_candidates(now, deadline, {}, POWER, HOURLY_RATES)
+        mid = next(c for c in result if c["slot"] == datetime(2025, 6, 1, 15, 0) and c["mode"] == "Smart")
+        assert mid["energy_kwh"] == pytest.approx(POWER)
+
+    def test_power_kw_unchanged_for_partial_slot(self):
+        # power_kw reflects charger rate, energy_kwh reflects actual delivery
+        now = datetime(2025, 6, 1, 14, 30)
+        deadline = datetime(2025, 6, 1, 15, 0)
+        result = build_candidates(now, deadline, {}, POWER, HOURLY_RATES)
+        assert result[0]["power_kw"] == pytest.approx(POWER)
+        assert result[0]["energy_kwh"] == pytest.approx(POWER * 0.5)
+
     # --- shared ---
 
     def test_solar_key_must_be_slot_plus_one_hour(self):
-        # Key at slot time (15:00) should NOT trigger any solar mode — key must be 16:00
-        wrong_key_solar = {"2025-06-01 15:00:00": 2.0}
+        # Key at slot time (14:00) should NOT trigger any solar mode — key must be 15:00
+        wrong_key_solar = {"2025-06-01 14:00:00": 2.0}
         deadline = NOW + timedelta(hours=1)
         result = build_candidates(NOW, deadline, wrong_key_solar, POWER, HOURLY_RATES)
         assert not any(c["mode"] in ("SmartSolar", "PureSolar") for c in result)
