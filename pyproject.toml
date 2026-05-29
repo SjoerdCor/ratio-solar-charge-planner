@@ -1,7 +1,7 @@
 [project]
-name = "thuisenergie"
+name = "ratio-solar-charge-planner"
 version = "0.1.0"
-description = "Thuisenergiemanagementsysteem — zonnepredictie, laadplanner, Tibber-analyse"
+description = "Smart EV charging with Ratio Solar — solar forecast, charge optimizer, AppDaemon integration"
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31.0",

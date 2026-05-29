@@ -1,14 +1,14 @@
 """
-laadplanner_app.py
-==================
+charger_app.py
+==============
 AppDaemon app: reads SoC and deadline from HA, runs the optimizer,
 and writes the desired charge mode back to the Ratio charger.
 
 Configuration via apps.yaml on the HA host (not committed to git).
 See appdaemon/apps.yaml.example for the expected structure.
 
-Deployment: git clone / git pull on the HA host, point AppDaemon
-to appdaemon/apps/laadplanner/ as the apps directory.
+Deployment: git clone / git pull on the HA host, symlink
+appdaemon/apps/charger/ into the AppDaemon apps directory.
 """
 
 from datetime import datetime, timedelta
@@ -66,7 +66,7 @@ class ChargeScheduler(hass.Hass):
         self.run_in(self._replan, 0)
         self.run_hourly(self._replan, "00:00:00")
         self.listen_state(self._replan, self.soc_sensor)
-        self.listen_state(self._replan, "input_button.herplan_laadplanner")
+        self.listen_state(self._replan, "input_button.replan")
         self.listen_state(self._replan, self.cable_sensor)
 
         self.log("ChargeScheduler initialised")
@@ -162,7 +162,7 @@ class ChargeScheduler(hass.Hass):
     def _publish_plan(
         self, selected: list, soc_start: float, soc_target: float, warning: str = ""
     ):
-        """Write the charge plan to sensor.laadplan so it can be shown on the dashboard."""
+        """Write the charge plan to sensor.charge_plan so it can be shown on the dashboard."""
         running_soc = soc_start
         lines = []
         for s in selected:
@@ -184,15 +184,15 @@ class ChargeScheduler(hass.Hass):
         self._publish_status(plan_text)
 
     def _publish_status(self, text: str):
-        """Write a status message to sensor.laadplan."""
+        """Write a status message to sensor.charge_plan."""
         self.set_state(
-            "sensor.laadplan",
+            "sensor.charge_plan",
             state=text[:255],
-            attributes={"plan": text, "friendly_name": "Laadplan"},
+            attributes={"plan": text, "friendly_name": "Charge Plan"},
         )
 
     def _read_soc(self):
-        """Read current SoC from the VW sensor (%)."""
+        """Read current SoC from the EV sensor (%)."""
         self.log(f"SOC sensor entity ID: {self.soc_sensor!r}")
         value = self.get_state(self.soc_sensor)
         if value in (None, "unavailable", "unknown"):

@@ -1617,6 +1617,41 @@ wheels = [
 ]
 
 [[package]]
+name = "ratio-solar-charge-planner"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pyyaml" },
+    { name = "requests" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "appdaemon" },
+    { name = "pytest" },
+    { name = "pytest-mock" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "matplotlib", specifier = ">=3.7.0" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "pandas", specifier = ">=2.0.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "requests", specifier = ">=2.31.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "appdaemon", specifier = ">=4.4.0" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-mock", specifier = ">=3.12" },
+]
+
+[[package]]
 name = "requests"
 version = "2.32.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1669,41 +1704,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/00/a4/644d5901d51aecb9fff218bbfc2525ef9362d4d03c2fcb8cb322aa0ce77f/sockjs-0.13.0.tar.gz", hash = "sha256:57e959a23f20a8d55149d1e5db0b3b870726f2b4ad8166d41bdcf411b36cdf76", size = 33250, upload-time = "2024-06-13T12:38:09.741Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/2a/bec7bb955323f799a0a041495843aae0eb5aeeeb5b98e13c05d8c633c6e9/sockjs-0.13.0-py3-none-any.whl", hash = "sha256:b00ac14e2d95b9f7c3769a475c06745d529e030fdca278a64b2cc9f4ae2c4d0d", size = 26340, upload-time = "2024-06-13T12:38:08.078Z" },
-]
-
-[[package]]
-name = "thuisenergie"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pyyaml" },
-    { name = "requests" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "appdaemon" },
-    { name = "pytest" },
-    { name = "pytest-mock" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "matplotlib", specifier = ">=3.7.0" },
-    { name = "numpy", specifier = ">=1.24.0" },
-    { name = "pandas", specifier = ">=2.0.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "requests", specifier = ">=2.31.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "appdaemon", specifier = ">=4.4.0" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-mock", specifier = ">=3.12" },
 ]
 
 [[package]]

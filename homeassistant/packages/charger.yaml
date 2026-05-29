@@ -1,4 +1,4 @@
-# HA package — symlink this file to /config/packages/laadplanner.yaml
+# HA package — symlink this file to /config/packages/charger.yaml
 # and add to configuration.yaml (one-time):
 #
 #   homeassistant:
@@ -7,8 +7,8 @@
 # Then restart Home Assistant.
 
 input_number:
-  laad_doel:
-    name: Laaddoel (%)
+  charge_target:
+    name: Charge target (%)
     min: 20
     max: 100
     step: 5
@@ -17,12 +17,12 @@ input_number:
     icon: mdi:battery-charging-80
 
 input_datetime:
-  laad_klaar_om:
-    name: Auto klaar om
+  charge_by:
+    name: Ready by
     has_date: true
     has_time: true
 
 input_button:
-  herplan_laadplanner:
-    name: Herplan laadplanner
+  replan:
+    name: Replan
     icon: mdi:refresh

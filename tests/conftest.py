@@ -1,8 +1,8 @@
 """
 Shared test configuration.
 
-Adds the laadplanner package to sys.path and stubs out AppDaemon so that
-laadplanner_app.py can be imported without a running Home Assistant instance.
+Adds the charger package to sys.path and stubs out AppDaemon so that
+charger_app.py can be imported without a running Home Assistant instance.
 
 We use real types.ModuleType objects (not MagicMock) for the appdaemon
 stubs so that Python's import machinery resolves 'import ... as hass'
@@ -13,7 +13,7 @@ import sys
 import types
 from pathlib import Path
 
-# Make 'laadplanner' importable as a package (relative imports need the parent on path)
+# Make 'charger' importable as a package (relative imports need the parent on path)
 _APPS_DIR = Path(__file__).parent.parent / "appdaemon" / "apps"
 if str(_APPS_DIR) not in sys.path:
     sys.path.insert(0, str(_APPS_DIR))

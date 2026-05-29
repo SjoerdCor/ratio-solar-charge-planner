@@ -1,62 +1,62 @@
-# Slim laden met Ratio Solar
+# Smart EV Charging with Ratio Solar
 
-AppDaemon-app voor Home Assistant die je **Ratio Solar laadpaal** slim aanstuurt op basis van een zonneopwekvoorspelling en een goedkoopste-eerst-strategie.
+AppDaemon app for Home Assistant that intelligently controls your **Ratio Solar charge point** based on a solar production forecast and a cheapest-first strategy.
 
-## Waarom?
+## Why?
 
-Gangbare oplossingen zoals evcc of de ingebouwde HA-laadintegraties sturen een laadpaal aan op basis van vermogen: laad als er genoeg zon is, anders niet. De Ratio Solar heeft echter een unieke **SmartSolar**-stand die altijd een klein stukje netstroom combineert met zonne-energie — waardoor je ook bij beperkte opwek voordeel haalt uit je zonnepanelen, iets wat generieke oplossingen missen.
+Common solutions like evcc or the built-in HA charging integrations control a charge point based on power: charge when there's enough solar, otherwise don't. The Ratio Solar has a unique **SmartSolar** mode that always combines a small amount of grid power with solar energy — so you benefit from your panels even at low production levels, something generic solutions miss.
 
-Deze app benut alle drie de standen van de Ratio Solar optimaal. Op basis van een uurlijkse zonneopwekvoorspelling (Forecast.Solar) kiest hij elk uur de goedkoopste combinatie, zodat de auto op tijd opgeladen is tegen minimale kosten.
+This app makes full use of all three Ratio Solar modes. Based on an hourly solar forecast (Forecast.Solar) it picks the cheapest combination each hour, so the car is charged on time at minimum cost.
 
-## Vereisten
+## Requirements
 
-- Home Assistant (OS of Supervised)
-- Ratio Solar laadpaal, gekoppeld via de Ratio-integratie
-- Elektrische auto met SoC-sensor in Home Assistant (de meeste moderne EV's bieden dit)
-- Zonnepanelen met bijbehorende opwekgegevens
+- Home Assistant (OS or Supervised)
+- Ratio Solar charge point, connected via the Ratio integration
+- Electric vehicle with a SoC sensor in Home Assistant (most modern EVs support this)
+- Solar panels with production data
 
 ---
 
-## Installatie
+## Installation
 
-### Stap 1 — AppDaemon installeren (in Home Assistant)
+### Step 1 — Install AppDaemon (in Home Assistant)
 
-Ga naar **Instellingen → Apps**, zoek op **AppDaemon** en klik op **Installeren**. Zet daarna "Starten bij opstarten" aan en klik op **Start**.
+Go to **Settings → Add-ons**, search for **AppDaemon** and click **Install**. Enable "Start on boot" and click **Start**.
 
-### Stap 2 — Terminal & SSH installeren (in Home Assistant)
+### Step 2 — Install Terminal & SSH (in Home Assistant)
 
-Ga naar **Instellingen → Apps**, zoek op **Terminal & SSH** en installeer deze. Klik op **Start** en open de web-UI via **Openen**.
+Go to **Settings → Add-ons**, search for **Terminal & SSH** and install it. Click **Start** and open the web UI via **Open**.
 
-> Alle volgende stappen voer je uit in deze terminal.
+> All following steps are run in this terminal.
 
-### Stap 3 — Repo clonen (in Terminal)
+### Step 3 — Clone the repo (in Terminal)
 
-Maak eerst een Personal Access Token aan op GitHub:
-- Kies **Tokens (classic)**
-- Vink alleen `repo` aan
-- Stel een vervaldatum in (90 dagen aanbevolen)
+First create a Personal Access Token on GitHub:
+- Choose **Tokens (classic)**
+- Check only `repo`
+- Set an expiry date (90 days recommended)
 
-Clone daarna de repo:
+Then clone the repo:
 
 ```bash
 cd /config
-git clone https://<jouw-token>@github.com/sjoerdcor/ratio-solar-charge-planner.git
+git clone https://<your-token>@github.com/sjoerdcor/ratio-solar-charge-planner.git
 ```
 
-### Stap 4 — Apps, helpers en dashboard instellen (in Terminal)
+### Step 4 — Set up apps, helpers and dashboard (in Terminal)
 
-Deze stap maak je **eenmalig** symlinks zodat `git pull` voortaan genoeg is voor updates.
+This step creates **one-time symlinks** so that `git pull` is enough for all future updates.
 
 ```bash
 cd /config/ratio-solar-charge-planner && git pull && \
-ln -sf /config/ratio-solar-charge-planner/appdaemon/apps/laadplanner \
-   /addon_configs/a0d7b954_appdaemon/apps/laadplanner && \
+ln -sf /config/ratio-solar-charge-planner/appdaemon/apps/charger \
+   /addon_configs/a0d7b954_appdaemon/apps/charger && \
 mkdir -p /config/packages && \
-ln -sf /config/ratio-solar-charge-planner/homeassistant/packages/laadplanner.yaml \
-   /config/packages/laadplanner.yaml
+ln -sf /config/ratio-solar-charge-planner/homeassistant/packages/charger.yaml \
+   /config/packages/charger.yaml
 ```
 
-Voeg daarna **eenmalig** de volgende secties toe aan `/config/configuration.yaml`. Als de `homeassistant:`-sectie al bestaat, voeg alleen de `packages:`-regel toe.
+Then add the following sections **once** to `/config/configuration.yaml`. If the `homeassistant:` section already exists, only add the `packages:` line.
 
 ```bash
 nano /config/configuration.yaml
@@ -68,41 +68,41 @@ homeassistant:
 
 lovelace:
   dashboards:
-    ev-laden:
+    ev-charging:
       mode: yaml
-      title: EV-laden
+      title: EV Charging
       filename: ratio-solar-charge-planner/homeassistant/dashboard.yaml
       show_in_sidebar: true
       require_admin: false
 ```
 
-Na het herstarten in Stap 6 verschijnt **EV-laden** in de zijbalk. Het dashboard wordt automatisch bijgewerkt bij elke `git pull`.
+After restarting in Step 6, **EV Charging** appears in the sidebar. The dashboard updates automatically with every `git pull`.
 
-### Stap 5 — apps.yaml invullen (in Terminal)
+### Step 5 — Fill in apps.yaml (in Terminal)
 
 ```bash
 nano /addon_configs/a0d7b954_appdaemon/apps/apps.yaml
 ```
 
-Zoek de entiteits-ID's op via **Instellingen → Ontwikkelaarshulpmiddelen → Staten** in Home Assistant:
-- Zoek op `state_of_charge` of `battery_level` → SoC-sensor van je auto
-- Zoek op `charge_mode` → modus-selector van de Ratio laadpaal
+Look up entity IDs via **Settings → Developer tools → States** in Home Assistant:
+- Search for `state_of_charge` or `battery_level` → SoC sensor of your EV
+- Search for `charge_mode` → mode selector of the Ratio charge point
 
-Gebruik onderstaand sjabloon en vul de juiste ID's in:
+Use the template below and fill in the correct IDs:
 
 ```yaml
-laadplanner:
-  module: laadplanner.laadplanner_app
+charger:
+  module: charger.charger_app
   class: ChargeScheduler
 
   location:
-    latitude: 52.09      # jouw breedtegraad
-    longitude: 5.23      # jouw lengtegraad
+    latitude: 52.09      # your latitude
+    longitude: 5.23      # your longitude
 
   panels:
     - name: SE
       kwp: 2.58
-      azimuth: -45       # graden t.o.v. het zuiden; west = positief, oost = negatief
+      azimuth: -45       # degrees relative to south; west = positive, east = negative
       tilt: 35
     - name: NE
       kwp: 1.29
@@ -113,12 +113,12 @@ laadplanner:
     soc_sensor:         "sensor.volkswagen_YOUR_SERIAL_state_of_charge"
     cable_sensor:       "binary_sensor.ratio_YOUR_SERIAL_vehicle_connected"
     charge_mode_select: "select.ratio_YOUR_SERIAL_charge_mode"
-    charge_target:      "input_number.laad_doel"
-    charge_by:          "input_datetime.laad_klaar_om"
+    charge_target:      "input_number.charge_target"
+    charge_by:          "input_datetime.charge_by"
 
   vehicle:
-    battery_kwh: 77          # bruikbare accucapaciteit in kWh
-    charging_power_kw: 11.0  # maximaal laadvermogen in kW
+    battery_kwh: 77          # usable battery capacity in kWh
+    charging_power_kw: 11.0  # maximum charging power in kW
 
   tariff:
     grid:
@@ -129,21 +129,21 @@ laadplanner:
           price: 0.23   # EUR/kWh (night rate)
 ```
 
-Sla op met `Ctrl+X → Y → Enter`.
+Save with `Ctrl+X → Y → Enter`.
 
-#### Tarief configureren
+#### Configuring the tariff
 
-Het tarief wordt opgegeven in hetzelfde formaat als [evcc](https://docs.evcc.io/docs/reference/configuration/tariffs).
+The tariff format is the same as [evcc](https://docs.evcc.io/docs/reference/configuration/tariffs).
 
-- `price` is de standaardprijs in **EUR/kWh** (dus 0.27 = 27 ct/kWh).
-- `zones` is optioneel. Zonder zones geldt de standaardprijs voor alle uren.
-- Een zone overschrijft de standaardprijs voor de opgegeven uren:
-  - `hours: "6-22"` — van 06:00 t/m 21:59 (einduur is niet inbegrepen)
-  - `hours: "22-6"` — van 22:00 t/m 05:59 (kruist middernacht)
-- Bij overlappende zones wint de **eerste** zone.
-- Het evcc-veld `days` (dag-van-de-week per zone) wordt nog **niet** ondersteund — de app geeft een foutmelding als je dit gebruikt.
+- `price` is the default price in **EUR/kWh** (so 0.27 = 27 ct/kWh).
+- `zones` is optional. Without zones the default price applies to all hours.
+- A zone overrides the default price for the specified hours:
+  - `hours: "6-22"` — from 06:00 to 21:59 (end hour not included)
+  - `hours: "22-6"` — from 22:00 to 05:59 (crosses midnight)
+- When zones overlap, the **first** zone wins.
+- The evcc field `days` (day-of-week per zone) is **not yet supported** — the app raises an error if you use it.
 
-Heb je een enkelvoudig tarief (geen nacht- of daltarief), dan laat je `zones` weg:
+For a flat rate (no night or off-peak tariff), omit `zones`:
 
 ```yaml
   tariff:
@@ -152,19 +152,19 @@ Heb je een enkelvoudig tarief (geen nacht- of daltarief), dan laat je `zones` we
       price: 0.28
 ```
 
-### Stap 6 — Home Assistant herstarten (in Home Assistant)
+### Step 6 — Restart Home Assistant (in Home Assistant)
 
-Ga naar **Instellingen → Systeem → Opnieuw opstarten**. Home Assistant laadt de helpers uit `configuration.yaml` en herstart AppDaemon automatisch.
+Go to **Settings → System → Restart**. Home Assistant loads the helpers from `configuration.yaml` and restarts AppDaemon automatically.
 
-### Stap 7 — Logs controleren (in Home Assistant)
+### Step 7 — Check the logs (in Home Assistant)
 
-Ga naar **Instellingen → Apps → AppDaemon → Logboek**. Je zou dit moeten zien:
+Go to **Settings → Add-ons → AppDaemon → Log**. You should see:
 
 ```
-INFO AppDaemon: Starting apps: ['laadplanner']
-INFO AppDaemon: Calling initialize() for laadplanner
-INFO laadplanner: ChargeScheduler initialised
-INFO laadplanner: Replanning...
+INFO AppDaemon: Starting apps: ['charger']
+INFO AppDaemon: Calling initialize() for charger
+INFO charger: ChargeScheduler initialised
+INFO charger: Replanning...
 ```
 
 ---
@@ -175,34 +175,34 @@ INFO laadplanner: Replanning...
 cd /config/ratio-solar-charge-planner && git pull
 ```
 
-De symlinks zorgen dat de app-code, helpers en het dashboard automatisch meekomen. Herstart Home Assistant alleen als er wijzigingen zijn in `homeassistant/packages/laadplanner.yaml`.
+The symlinks ensure that the app code, helpers and dashboard all update automatically. Only restart Home Assistant if there are changes to `homeassistant/packages/charger.yaml`.
 
 ---
 
 ## Dashboard
 
-Het dashboard staat in `homeassistant/dashboard.yaml` en wordt tijdens de installatie (Stap 4) automatisch gekoppeld. Na een `git pull` zijn wijzigingen direct zichtbaar na een HA-herstart.
+The dashboard is in `homeassistant/dashboard.yaml` and is linked automatically during installation (Step 4). Changes are visible after a `git pull` and a HA restart.
 
-Met **Herplan nu** bereken je het laadplan direct opnieuw, zonder te wachten op het volgende volle uur.
+Use **Replan** to recalculate the charge plan immediately, without waiting for the next full hour.
 
 ---
 
-## Laadlogica
+## Charging logic
 
-**Basisstand**: Ratio op `PureSolar` — laadt alleen op zonne-energie.
+**Default mode**: Ratio set to `PureSolar` — charges on solar only.
 
-**Optimizer** (draait elk uur via AppDaemon):
-- Berekent hoeveel kWh nog nodig is vóór de deadline
-- Bouwt kandidaten per uur: `Smart` (vol netvermogen), `SmartSolar` (minimaal 1,4 kW, netsupplement indien zon tekortschiet) en `PureSolar` (alleen zon, minimaal 1,4 kW opwek vereist)
-- Kiest de goedkoopste uren op basis van vaste tarieven en zonnepredictie
-- Stelt de modus in voor het huidige uur
+**Optimizer** (runs every hour via AppDaemon):
+- Calculates how many kWh are still needed before the deadline
+- Builds candidates per hour: `Smart` (full grid power), `SmartSolar` (minimum 1.4 kW, grid supplement when solar falls short) and `PureSolar` (solar only, requires at least 1.4 kW production)
+- Picks the cheapest hours based on fixed tariffs and solar forecast
+- Sets the mode for the current hour
 
 ---
 
 ## Roadmap
 
-- [x] Zonnepredictie via Forecast.Solar (vandaag + morgen)
-- [x] Rolling-horizon laadplanner
-- [x] AppDaemon integratie
-- [ ] OpenMeteo als fallback (7 dagen vooruit)
-- [ ] Dynamisch contract (Tibber prijsanalyse)
+- [x] Solar forecast via Forecast.Solar (today + tomorrow)
+- [x] Rolling-horizon charge planner
+- [x] AppDaemon integration
+- [ ] OpenMeteo as fallback (7 days ahead)
+- [ ] Dynamic tariff (Tibber)

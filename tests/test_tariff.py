@@ -2,7 +2,7 @@
 
 import pytest
 
-from laadplanner.tariff import _parse_hour_range, parse_tariff
+from charger.tariff import _parse_hour_range, parse_tariff
 
 
 # ---------------------------------------------------------------------------

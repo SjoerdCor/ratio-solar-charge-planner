@@ -2,7 +2,7 @@
 optimizer.py
 ============
 Pure optimisation logic — no config or HA dependencies.
-Imported by both the CLI (scripts/laadplanner.py) and the AppDaemon app.
+Imported by both the CLI and the AppDaemon app.
 
 Units: power in kW, energy in kWh, tariffs in ct/kWh.
 """

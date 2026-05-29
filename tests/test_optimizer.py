@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from laadplanner.optimizer import (
+from charger.optimizer import (
     MIN_CHARGING_KW,
     SMART_SOLAR_MIN_PV_KWH,
     _best_per_slot,

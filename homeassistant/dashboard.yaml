@@ -1,28 +1,28 @@
 views:
   - type: sections
-    path: ev-laden
+    path: ev-charging
     header:
       card:
         type: heading
         heading_style: title
-        heading: EV-laden
+        heading: EV Charging
     sections:
       - type: grid
-        title: Instellingen
+        title: Settings
         cards:
           - type: entities
             show_header_toggle: false
             entities:
-              - entity: input_number.laad_doel
-                name: Doel SoC
-              - entity: input_datetime.laad_klaar_om
-                name: Klaar om
-              - entity: input_button.herplan_laadplanner
-                name: Herplan nu
+              - entity: input_number.charge_target
+                name: Target SoC
+              - entity: input_datetime.charge_by
+                name: Ready by
+              - entity: input_button.replan
+                name: Replan
                 icon: mdi:refresh
       - type: grid
-        title: Laadplan
+        title: Charge plan
         cards:
           - type: markdown
             content: >
-              {{ state_attr('sensor.laadplan', 'plan') or 'Geen laadplan beschikbaar' }}
+              {{ state_attr('sensor.charge_plan', 'plan') or 'No charge plan available' }}

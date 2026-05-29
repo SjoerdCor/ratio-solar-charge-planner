@@ -1,5 +1,5 @@
 # Cache en data
-appdaemon/apps/laadplanner/cache/
+appdaemon/apps/charger/cache/
 data/
 
 # Lokale scripts (niet voor eindgebruikers)

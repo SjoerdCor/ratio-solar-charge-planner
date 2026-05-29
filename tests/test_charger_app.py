@@ -1,4 +1,4 @@
-"""Unit tests for laadplanner_app.py.
+"""Unit tests for charger_app.py.
 
 AppDaemon is stubbed in conftest.py so ChargeScheduler can be imported
 without a running Home Assistant instance.  Each test creates the scheduler
@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 # Import after conftest.py has stubbed appdaemon
-from laadplanner.laadplanner_app import ChargeScheduler
+from charger.charger_app import ChargeScheduler
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ def _setup_states(sched, *, soc="60", target="80", deadline=None, cable="on", mo
 
 class TestInitialize:
     def test_sets_entity_attributes(self, sched, mocker):
-        mocker.patch("laadplanner.solar_forecast.configure")
+        mocker.patch("charger.solar_forecast.configure")
         sched.initialize()
         assert sched.soc_sensor == "sensor.soc"
         assert sched.cable_sensor == "binary_sensor.cable"
@@ -108,19 +108,19 @@ class TestInitialize:
         assert sched.hourly_rates[23] == NIGHT_RATE
 
     def test_schedules_immediate_and_hourly_replan(self, sched, mocker):
-        mocker.patch("laadplanner.solar_forecast.configure")
+        mocker.patch("charger.solar_forecast.configure")
         sched.initialize()
         sched.run_in.assert_called_once_with(sched._replan, 0)
         sched.run_hourly.assert_called_once_with(sched._replan, "00:00:00")
 
     def test_registers_three_listen_state_calls(self, sched, mocker):
-        mocker.patch("laadplanner.solar_forecast.configure")
+        mocker.patch("charger.solar_forecast.configure")
         sched.initialize()
-        # soc_sensor, herplan button, cable_sensor
+        # soc_sensor, replan button, cable_sensor
         assert sched.listen_state.call_count == 3
 
     def test_calls_solar_forecast_configure(self, sched, mocker):
-        configure = mocker.patch("laadplanner.solar_forecast.configure")
+        configure = mocker.patch("charger.solar_forecast.configure")
         sched.initialize()
         configure.assert_called_once()
         _, kwargs = configure.call_args
@@ -135,20 +135,20 @@ class TestInitialize:
 class TestReplanEarlyExits:
     def test_cable_disconnected_publishes_status_and_returns(self, sched, mocker):
         _setup_states(sched, cable="off")
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
 
         sched._replan()
 
         sched.set_state.assert_called_once()
         state_text = sched.set_state.call_args[0][0]
-        assert state_text == "sensor.laadplan"
+        assert state_text == "sensor.charge_plan"
         attributes = sched.set_state.call_args[1]["attributes"]
         assert "Cable not connected" in attributes["plan"]
         sched.call_service.assert_not_called()
 
     def test_soc_unavailable_publishes_status(self, sched, mocker):
         _setup_states(sched, soc="unavailable")
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
 
         sched._replan()
 
@@ -158,7 +158,7 @@ class TestReplanEarlyExits:
 
     def test_soc_unknown_publishes_status(self, sched, mocker):
         _setup_states(sched, soc="unknown")
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
 
         sched._replan()
 
@@ -167,7 +167,7 @@ class TestReplanEarlyExits:
 
     def test_target_unavailable_publishes_status(self, sched, mocker):
         _setup_states(sched, target="unavailable")
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
 
         sched._replan()
 
@@ -178,7 +178,7 @@ class TestReplanEarlyExits:
     def test_deadline_in_past_publishes_status(self, sched, mocker):
         past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
         _setup_states(sched, deadline=past)
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
 
         sched._replan()
 
@@ -189,7 +189,7 @@ class TestReplanEarlyExits:
     def test_deadline_in_past_does_not_change_charge_mode(self, sched, mocker):
         past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
         _setup_states(sched, deadline=past, mode="Smart")
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
 
         sched._replan()
 
@@ -197,7 +197,7 @@ class TestReplanEarlyExits:
 
     def test_target_already_reached_sets_pure_solar(self, sched, mocker):
         _setup_states(sched, soc="85", target="80", mode="Smart")
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
 
         sched._replan()
 
@@ -209,7 +209,7 @@ class TestReplanEarlyExits:
 
     def test_target_exactly_met_sets_pure_solar(self, sched, mocker):
         _setup_states(sched, soc="80", target="80", mode="Smart")
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
 
         sched._replan()
 
@@ -228,7 +228,7 @@ class TestReplanPlanning:
     def test_solar_forecast_failure_continues_with_empty_forecast(self, sched, mocker):
         _setup_states(sched, soc="25", target="80")
         mocker.patch(
-            "laadplanner.solar_forecast.fetch_forecast",
+            "charger.solar_forecast.fetch_forecast",
             side_effect=RuntimeError("API error"),
         )
 
@@ -240,7 +240,7 @@ class TestReplanPlanning:
         # Deadline only 5 minutes away → 0 full-hour slots available
         soon = (datetime.now() + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
         _setup_states(sched, soc="25", target="80", deadline=soon)
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast", return_value={})
+        mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
 
         sched._replan()
 
@@ -251,7 +251,7 @@ class TestReplanPlanning:
     def test_normal_plan_sets_charge_mode(self, sched, mocker):
         # SoC=70%, target=80% → need 5.8 kWh; deadline 7 days away → plenty of slots
         _setup_states(sched, soc="70", target="80")
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast", return_value={})
+        mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
 
         sched._replan()
 
@@ -261,7 +261,7 @@ class TestReplanPlanning:
 
     def test_normal_plan_publishes_slot_details(self, sched, mocker):
         _setup_states(sched, soc="25", target="80", mode="Smart")
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast", return_value={})
+        mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
 
         sched._replan()
 
@@ -273,7 +273,7 @@ class TestReplanPlanning:
     def test_mode_not_changed_when_already_correct(self, sched, mocker):
         # SoC already at target → PureSolar; current mode is also PureSolar
         _setup_states(sched, soc="80", target="80", mode="PureSolar")
-        mocker.patch("laadplanner.solar_forecast.fetch_forecast")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
 
         sched._replan()
 
@@ -349,7 +349,7 @@ class TestPublishStatus:
         sched._publish_status(long_text)
         args, kwargs = sched.set_state.call_args
         state_value = args[1] if len(args) > 1 else kwargs.get("state")
-        # set_state is called as set_state("sensor.laadplan", state=..., attributes=...)
+        # set_state is called as set_state("sensor.charge_plan", state=..., attributes=...)
         assert len(sched.set_state.call_args[1]["attributes"]["plan"]) == 300
         # The state kwarg or positional should be truncated
         call_kwargs = sched.set_state.call_args[1]
@@ -363,10 +363,10 @@ class TestPublishStatus:
         args, kwargs = sched.set_state.call_args
         assert kwargs["attributes"]["plan"] == text
 
-    def test_entity_id_is_laadplan(self, sched):
+    def test_entity_id_is_charge_plan(self, sched):
         sched._publish_status("test")
         entity_id = sched.set_state.call_args[0][0]
-        assert entity_id == "sensor.laadplan"
+        assert entity_id == "sensor.charge_plan"
 
 
 # ---------------------------------------------------------------------------
