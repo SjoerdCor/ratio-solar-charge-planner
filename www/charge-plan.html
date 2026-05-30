@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Charge Plan</title>
   <style>
     :root {
@@ -198,6 +201,13 @@
           document.getElementById('slots').innerHTML =
             `<div class="empty">Could not load charge plan: ${err.message}</div>`;
         });
+    }
+
+    // Bypass service worker and HTTP cache on every visit by redirecting to a
+    // timestamped URL. The ?_t parameter is never cached, so the browser always
+    // fetches fresh HTML from the server.
+    if (!new URLSearchParams(location.search).has('_t')) {
+      location.replace('/local/charge-plan.html?_t=' + Date.now());
     }
 
     load();
