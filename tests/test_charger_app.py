@@ -172,6 +172,17 @@ class TestReplanEarlyExits:
         assert "Cable not connected" in attributes["plan"]
         sched.call_service.assert_not_called()
 
+    def test_cable_disconnected_writes_plan_json(self, sched, mocker):
+        _setup_states(sched, cable="off")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
+        write_json = mocker.patch.object(sched, "_write_plan_json")
+
+        sched._replan()
+
+        write_json.assert_called_once()
+        kwargs = write_json.call_args[1]
+        assert "Cable not connected" in kwargs["status"]
+
     def test_soc_unavailable_publishes_status(self, sched, mocker):
         _setup_states(sched, soc="unavailable")
         mocker.patch("charger.solar_forecast.fetch_forecast")
@@ -181,6 +192,17 @@ class TestReplanEarlyExits:
         args, kwargs = sched.set_state.call_args
         assert "SoC unavailable" in kwargs["attributes"]["plan"]
         sched.call_service.assert_not_called()
+
+    def test_soc_unavailable_writes_plan_json(self, sched, mocker):
+        _setup_states(sched, soc="unavailable")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
+        write_json = mocker.patch.object(sched, "_write_plan_json")
+
+        sched._replan()
+
+        write_json.assert_called_once()
+        kwargs = write_json.call_args[1]
+        assert "SoC unavailable" in kwargs["status"]
 
     def test_soc_unknown_publishes_status(self, sched, mocker):
         _setup_states(sched, soc="unknown")
@@ -200,6 +222,18 @@ class TestReplanEarlyExits:
         args, kwargs = sched.set_state.call_args
         assert "charge target unavailable" in kwargs["attributes"]["plan"]
         _assert_no_mode_set(sched)
+
+    def test_target_unavailable_writes_plan_json_with_soc(self, sched, mocker):
+        _setup_states(sched, soc="55", target="unavailable")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
+        write_json = mocker.patch.object(sched, "_write_plan_json")
+
+        sched._replan()
+
+        write_json.assert_called_once()
+        kwargs = write_json.call_args[1]
+        assert kwargs["soc_start"] == pytest.approx(55.0)
+        assert "charge target unavailable" in kwargs["status"]
 
     def test_deadline_in_past_publishes_status(self, sched, mocker):
         past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")

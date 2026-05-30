@@ -98,7 +98,9 @@ class ChargeScheduler(hass.Hass):
         self.log("Replanning...")
 
         if self.get_state(self.cable_sensor) == "off":
-            self._publish_status("Cable not connected — no charge plan calculated")
+            status = "Cable not connected — no charge plan calculated"
+            self._publish_status(status)
+            self._write_plan_json(status=status)
             return
 
         soc = self._read_soc()
@@ -109,13 +111,17 @@ class ChargeScheduler(hass.Hass):
 
         if soc is None:
             self.log("Cannot build plan: SoC unavailable", level="WARNING")
-            self._publish_status("Cannot build plan: SoC unavailable")
+            status = "Cannot build plan: SoC unavailable"
+            self._publish_status(status)
+            self._write_plan_json(status=status)
             return
 
         target = self._read_charge_target()
         if target is None:
             self.log("Cannot build plan: charge target unavailable", level="WARNING")
-            self._publish_status("Cannot build plan: charge target unavailable")
+            status = "Cannot build plan: charge target unavailable"
+            self._publish_status(status)
+            self._write_plan_json(soc_start=round(soc, 1), status=status)
             return
 
         deadline = self._read_deadline()
@@ -323,10 +329,10 @@ class ChargeScheduler(hass.Hass):
 
     def _write_plan_json(
         self,
-        soc_start: float,
-        soc_target: float,
-        deadline: datetime,
-        slots: list,
+        soc_start: float | None = None,
+        soc_target: float | None = None,
+        deadline: datetime | None = None,
+        slots: list | None = None,
         warning: str | None = None,
         status: str | None = None,
     ):
@@ -334,11 +340,11 @@ class ChargeScheduler(hass.Hass):
         data = {
             "soc_start": soc_start,
             "soc_target": soc_target,
-            "deadline": deadline.isoformat(timespec="seconds"),
+            "deadline": deadline.isoformat(timespec="seconds") if deadline is not None else None,
             "warning": warning,
             "status": status,
             "updated": datetime.now().isoformat(timespec="seconds"),
-            "slots": slots,
+            "slots": slots if slots is not None else [],
         }
         try:
             _PLAN_JSON.parent.mkdir(parents=True, exist_ok=True)
