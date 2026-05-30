@@ -14,20 +14,29 @@ views:
             show_header_toggle: false
             grid_options:
               columns: 12
-              rows: 8
+              rows: 7
             entities:
-              - entity: input_number.charge_target
-                name: Target SoC
-              - entity: input_number.charge_minimum
-                name: Charge immediately to
               - entity: input_number.soc_override
                 name: Current SoC (fallback)
                 secondary_info: last-changed
+              - entity: input_number.charge_minimum
+                name: Charge immediately to
+              - entity: input_number.charge_target
+                name: Target SoC
               - entity: input_datetime.charge_by
                 name: Ready by
-              - entity: input_button.replan
-                name: Replan
-                icon: mdi:refresh
+          - type: button
+            name: Replan
+            icon: mdi:refresh
+            show_name: true
+            tap_action:
+              action: call-service
+              service: input_button.press
+              target:
+                entity_id: input_button.replan
+            grid_options:
+              columns: 12
+              rows: 2
       - type: grid
         title: Charge plan
         cards:
