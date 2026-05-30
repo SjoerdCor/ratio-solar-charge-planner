@@ -143,12 +143,12 @@ class TestInitialize:
         sched.run_in.assert_called_once_with(sched._replan, 0)
         sched.run_hourly.assert_called_once_with(sched._replan, "00:00:00")
 
-    def test_registers_five_listen_state_calls(self, sched, mocker):
+    def test_registers_four_listen_state_calls(self, sched, mocker):
         mocker.patch("charger.solar_forecast.configure")
         _mock_zone_home(sched)
         sched.initialize()
-        # soc_sensor, replan button, cable_sensor, power_sensor, cable_disconnect
-        assert sched.listen_state.call_count == 5
+        # replan button, cable_sensor, power_sensor, cable_disconnect
+        assert sched.listen_state.call_count == 4
 
     def test_calls_solar_forecast_configure(self, sched, mocker):
         configure = mocker.patch("charger.solar_forecast.configure")

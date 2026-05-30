@@ -114,7 +114,6 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
 
         self.run_in(self._replan, 0)
         self.run_hourly(self._replan, "00:00:00")
-        self.listen_state(self._replan, self.soc_sensor)
         self.listen_state(self._replan, "input_button.replan")
         self.listen_state(self._replan, self.cable_sensor)
         self.listen_state(self._on_power_change, self.power_sensor)
@@ -196,7 +195,8 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
             )
 
         candidates = build_candidates(
-            datetime.now(), deadline, self._fetch_forecast(), self.charging_power_kw, self.hourly_rates,
+            datetime.now(), deadline,
+            self._fetch_forecast(), self.charging_power_kw, self.hourly_rates,
         )
 
         max_kwh = max_available_energy(candidates)
