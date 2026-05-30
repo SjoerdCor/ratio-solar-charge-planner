@@ -8,6 +8,10 @@ Common solutions like evcc or the built-in HA charging integrations control a ch
 
 This app makes full use of all three Ratio Solar modes. Based on an hourly solar forecast (Forecast.Solar) it picks the cheapest combination each hour, so the car is charged on time at minimum cost.
 
+<img src="docs/dashboard.png" alt="EV Charging dashboard" width="700">
+
+*Settings on the left, charge plan on the right. Blue = Smart (grid), orange = SmartSolar (solar + grid top-up), green = PureSolar (free solar only). Slots are grouped by day.*
+
 ## Requirements
 
 - Home Assistant (OS or Supervised)
