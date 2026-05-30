@@ -241,30 +241,30 @@ class TestReplanEarlyExits:
         assert plan.soc_start == pytest.approx(55.0)
         assert "charge target unavailable" in plan.status
 
-    def test_deadline_in_past_publishes_status(self, sched, mocker):
+    def test_deadline_in_past_shows_warning(self, sched, mocker):
         past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
         _setup_states(sched, deadline=past)
-        mocker.patch("charger.solar_forecast.fetch_forecast")
 
         sched._replan()
 
         args, kwargs = sched.set_state.call_args
         assert "Deadline passed" in kwargs["attributes"]["plan"]
-        _assert_no_mode_set(sched)
 
-    def test_deadline_in_past_does_not_change_charge_mode(self, sched, mocker):
+    def test_deadline_in_past_sets_smart_mode(self, sched, mocker):
         past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
-        _setup_states(sched, deadline=past, mode="Smart")
-        mocker.patch("charger.solar_forecast.fetch_forecast")
+        _setup_states(sched, deadline=past, mode="PureSolar")
 
         sched._replan()
 
-        _assert_no_mode_set(sched)
+        sched.call_service.assert_any_call(
+            "select/select_option",
+            entity_id="select.mode",
+            option="Smart",
+        )
 
-    def test_deadline_in_past_writes_empty_plan_json(self, sched, mocker):
+    def test_deadline_in_past_writes_warning_to_json(self, sched, mocker):
         past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
         _setup_states(sched, soc="60", target="80", deadline=past)
-        mocker.patch("charger.solar_forecast.fetch_forecast")
         write_json = mocker.patch.object(sched, "_write_plan_json")
 
         sched._replan()
@@ -272,7 +272,8 @@ class TestReplanEarlyExits:
         write_json.assert_called_once()
         plan = write_json.call_args[0][0]
         assert plan.slots == []
-        assert "Deadline passed" in plan.status
+        assert plan.status is None
+        assert "Deadline passed" in plan.warning
 
     def test_target_reached_writes_empty_plan_json(self, sched, mocker):
         _setup_states(sched, soc="85", target="80")

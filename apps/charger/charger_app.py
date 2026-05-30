@@ -158,20 +158,6 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
             return
 
         deadline = self._read_deadline()
-
-        now = datetime.now()
-        if deadline <= now:
-            self.log("Deadline is in the past — no plan possible", level="WARNING")
-            status = "Deadline passed — please set a new deadline"
-            self._publish_status(status)
-            self._write_plan_json(_PlanData(
-                soc_start=round(soc, 1),
-                soc_target=round(target, 1),
-                deadline=deadline,
-                status=status,
-            ))
-            return
-
         minimum = self._read_charge_minimum()
         result = self._compute_plan(soc, target, deadline, minimum)
         self._publish_plan(result, soc, target, deadline)
@@ -197,6 +183,16 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
                 slots=[],
                 mode="PureSolar",
                 status=f"Target reached ({soc:.0f}% ≥ {target:.0f}%) — no charging needed",
+            )
+
+        if deadline <= datetime.now():
+            warning = "Deadline passed — charging as fast as possible. Please set a new deadline."
+            self.log(warning, level="WARNING")
+            return _OptimizeResult(
+                slots=[],
+                mode="Smart",
+                warning=warning,
+                energy_needed_kwh=energy_needed_kwh,
             )
 
         candidates = build_candidates(
