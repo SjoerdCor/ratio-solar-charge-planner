@@ -12,6 +12,9 @@ views:
         cards:
           - type: entities
             show_header_toggle: false
+            grid_options:
+              columns: 12
+              rows: 8
             entities:
               - entity: input_number.charge_target
                 name: Target SoC
@@ -30,4 +33,6 @@ views:
         cards:
           - type: iframe
             url: /local/charge-plan.html
-            aspect_ratio: 50%
+            grid_options:
+              columns: 12
+              rows: 8
