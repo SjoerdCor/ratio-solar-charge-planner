@@ -123,7 +123,15 @@ class ChargeScheduler(hass.Hass):
         now = datetime.now()
         if deadline <= now:
             self.log("Deadline is in the past — no plan possible", level="WARNING")
-            self._publish_status("Deadline passed — please set a new deadline")
+            status = "Deadline passed — please set a new deadline"
+            self._publish_status(status)
+            self._write_plan_json(
+                soc_start=round(soc, 1),
+                soc_target=round(target, 1),
+                deadline=deadline,
+                slots=[],
+                status=status,
+            )
             return
 
         minimum = self._read_charge_minimum()

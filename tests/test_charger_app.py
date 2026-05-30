@@ -221,6 +221,31 @@ class TestReplanEarlyExits:
 
         _assert_no_mode_set(sched)
 
+    def test_deadline_in_past_writes_empty_plan_json(self, sched, mocker):
+        past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+        _setup_states(sched, soc="60", target="80", deadline=past)
+        mocker.patch("charger.solar_forecast.fetch_forecast")
+        write_json = mocker.patch.object(sched, "_write_plan_json")
+
+        sched._replan()
+
+        write_json.assert_called_once()
+        kwargs = write_json.call_args[1]
+        assert kwargs["slots"] == []
+        assert "Deadline passed" in kwargs["status"]
+
+    def test_target_reached_writes_empty_plan_json(self, sched, mocker):
+        _setup_states(sched, soc="85", target="80")
+        mocker.patch("charger.solar_forecast.fetch_forecast")
+        write_json = mocker.patch.object(sched, "_write_plan_json")
+
+        sched._replan()
+
+        write_json.assert_called_once()
+        kwargs = write_json.call_args[1]
+        assert kwargs["slots"] == []
+        assert "Target reached" in kwargs["status"]
+
     def test_target_already_reached_sets_pure_solar(self, sched, mocker):
         _setup_states(sched, soc="85", target="80", mode="Smart")
         mocker.patch("charger.solar_forecast.fetch_forecast")
