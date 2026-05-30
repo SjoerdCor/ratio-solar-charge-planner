@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 # Import after conftest.py has stubbed appdaemon
-from charger.charger_app import ChargeScheduler
+from charger.charger_app import ChargeScheduler, _OptimizeResult
 from charger.solar_forecast import SolarForecastError
 
 
@@ -74,7 +74,9 @@ def sched(mocker):
     return s
 
 
-def _setup_states(sched, *, soc="60", target="80", deadline=None, cable="on", mode="PureSolar", minimum="0"):
+def _setup_states(
+    sched, *, soc="60", target="80", deadline=None, cable="on", mode="PureSolar", minimum="0"
+):
     """Configure get_state to return realistic values for all entities."""
     if deadline is None:
         # Far future so deadline-in-past check never fires
@@ -374,6 +376,8 @@ class TestReplanPlanning:
 # ---------------------------------------------------------------------------
 
 class TestPublishPlan:
+    _DL = datetime(2025, 6, 7, 6, 0)
+
     def _make_slot(self, hour: int, mode: str = "Smart", energy: float = 11.0) -> dict:
         return {
             "slot": datetime(2025, 6, 1, hour, 0),
@@ -383,20 +387,23 @@ class TestPublishPlan:
             "energy_kwh": energy,
         }
 
+    def _result(self, slots=None, mode="Smart", warning=None) -> _OptimizeResult:
+        return _OptimizeResult(slots=slots or [], mode=mode, warning=warning)
+
     def test_empty_selected_shows_no_slots_message(self, sched):
-        sched._publish_plan([], soc_start=50.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0))
+        sched._publish_plan(self._result(), 50.0, 80.0, self._DL)
         args, kwargs = sched.set_state.call_args
         assert "No charging slots planned" in kwargs["attributes"]["plan"]
 
     def test_warning_prepended_when_provided(self, sched):
-        sched._publish_plan([], soc_start=50.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0), warning="Test warning")
+        sched._publish_plan(self._result(warning="Test warning"), 50.0, 80.0, self._DL)
         args, kwargs = sched.set_state.call_args
         plan = kwargs["attributes"]["plan"]
         assert plan.startswith("Test warning")
 
     def test_running_soc_increases_per_slot(self, sched):
         slot = self._make_slot(15, energy=5.8)  # 5.8 / 58 kWh = +10%
-        sched._publish_plan([slot], soc_start=70.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0))
+        sched._publish_plan(self._result([slot]), 70.0, 80.0, self._DL)
         args, kwargs = sched.set_state.call_args
         plan = kwargs["attributes"]["plan"]
         assert "80%" in plan
@@ -404,7 +411,7 @@ class TestPublishPlan:
     def test_running_soc_capped_at_target(self, sched):
         # Energy would overshoot target; check it's capped
         slot = self._make_slot(15, energy=11.0)  # 11/58 * 100 ≈ 19%
-        sched._publish_plan([slot], soc_start=75.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0))
+        sched._publish_plan(self._result([slot]), 75.0, 80.0, self._DL)
         args, kwargs = sched.set_state.call_args
         plan = kwargs["attributes"]["plan"]
         assert "80%" in plan
@@ -413,7 +420,7 @@ class TestPublishPlan:
     def test_partial_slot_end_time_not_full_hour(self, sched):
         # 5 kWh at 11 kW → 5/11 hours ≈ 27 minutes, not a full hour
         slot = self._make_slot(15, energy=5.0)
-        sched._publish_plan([slot], soc_start=70.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0))
+        sched._publish_plan(self._result([slot]), 70.0, 80.0, self._DL)
         args, kwargs = sched.set_state.call_args
         plan = kwargs["attributes"]["plan"]
         # Start is 15:00, end should NOT be 16:00
@@ -421,7 +428,7 @@ class TestPublishPlan:
 
     def test_plan_contains_mode_and_price(self, sched):
         slot = self._make_slot(22, mode="Smart", energy=11.0)
-        sched._publish_plan([slot], soc_start=25.0, soc_target=80.0, deadline=datetime(2025, 6, 7, 6, 0))
+        sched._publish_plan(self._result([slot], mode="Smart"), 25.0, 80.0, self._DL)
         args, kwargs = sched.set_state.call_args
         plan = kwargs["attributes"]["plan"]
         assert "Smart" in plan
@@ -577,21 +584,27 @@ class TestReadSocFallback:
 
     def test_base_soc_when_no_session_energy(self, sched):
         def _get_state(entity_id):
-            return {"input_number.soc_override": "60", "sensor.session_energy_kwh": "0"}.get(entity_id)
+            return {"input_number.soc_override": "60", "sensor.session_energy_kwh": "0"}.get(
+                entity_id
+            )
         sched.get_state.side_effect = _get_state
         assert sched._read_soc_fallback() == pytest.approx(60.0)
 
     def test_adds_session_energy_to_base_soc(self, sched):
         # 5.8 kWh on 58 kWh battery = +10%
         def _get_state(entity_id):
-            return {"input_number.soc_override": "60", "sensor.session_energy_kwh": "5.8"}.get(entity_id)
+            return {"input_number.soc_override": "60", "sensor.session_energy_kwh": "5.8"}.get(
+                entity_id
+            )
         sched.get_state.side_effect = _get_state
         assert sched._read_soc_fallback() == pytest.approx(70.0)
 
     def test_capped_at_100(self, sched):
         # 95% + 10 kWh / 58 kWh * 100 ≈ 95 + 17.2 → capped at 100
         def _get_state(entity_id):
-            return {"input_number.soc_override": "95", "sensor.session_energy_kwh": "10.0"}.get(entity_id)
+            return {"input_number.soc_override": "95", "sensor.session_energy_kwh": "10.0"}.get(
+                entity_id
+            )
         sched.get_state.side_effect = _get_state
         assert sched._read_soc_fallback() == pytest.approx(100.0)
 

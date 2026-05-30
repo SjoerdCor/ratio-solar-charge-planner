@@ -44,6 +44,17 @@ class _PlanData:
     status: str | None = None
 
 
+@dataclass
+class _OptimizeResult:
+    """Output of _compute_plan(): selected slots, target mode, and optional messages."""
+    slots: list
+    mode: str
+    warning: str | None = None
+    status: str | None = None
+    immediate_kwh: float = 0.0
+    energy_needed_kwh: float = 0.0
+
+
 class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attributes
     """Manages the Ratio charger mode based on SoC, deadline and solar forecast.
 
@@ -162,10 +173,16 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
             return
 
         minimum = self._read_charge_minimum()
-        self._run_optimizer(soc, target, deadline, minimum)
+        result = self._compute_plan(soc, target, deadline, minimum)
+        self._publish_plan(result, soc, target, deadline)
+        self._set_mode(result.mode)
+        if result.energy_needed_kwh > 0:
+            self._schedule_threshold_timer(result.immediate_kwh, result.energy_needed_kwh)
 
-    def _run_optimizer(self, soc: float, target: float, deadline: datetime, minimum: float):
-        """Build and apply the charge plan; schedule a mid-hour replan when a threshold is near."""
+    def _compute_plan(
+        self, soc: float, target: float, deadline: datetime, minimum: float
+    ) -> _OptimizeResult:
+        """Compute the charge plan. Pure calculation — no HA state writes."""
         immediate_kwh = max(0.0, (minimum - soc) / 100 * self.battery_kwh)
         energy_needed_kwh = (target - soc) / 100 * self.battery_kwh
         self.log(
@@ -176,28 +193,14 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
 
         if energy_needed_kwh <= 0:
             self.log("Target already reached — switching to PureSolar")
-            status = f"Target reached ({soc:.0f}% ≥ {target:.0f}%) — no charging needed"
-            self._publish_status(status)
-            self._write_plan_json(_PlanData(
-                soc_start=round(soc, 1),
-                soc_target=round(target, 1),
-                deadline=deadline,
-                status=status,
-            ))
-            self._set_mode("PureSolar")
-            return
-
-        try:
-            forecast = solar_forecast.fetch_forecast()
-        except solar_forecast.SolarForecastError as exc:
-            self.log(
-                f"Solar forecast failed: {exc} — continuing without solar data",
-                level="WARNING",
+            return _OptimizeResult(
+                slots=[],
+                mode="PureSolar",
+                status=f"Target reached ({soc:.0f}% ≥ {target:.0f}%) — no charging needed",
             )
-            forecast = {}
 
         candidates = build_candidates(
-            datetime.now(), deadline, forecast, self.charging_power_kw, self.hourly_rates,
+            datetime.now(), deadline, self._fetch_forecast(), self.charging_power_kw, self.hourly_rates,
         )
 
         max_kwh = max_available_energy(candidates)
@@ -208,9 +211,13 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
                 f"{energy_needed_kwh:.1f} kWh needed. Charging as fast as possible."
             )
             self.log(warning, level="WARNING")
-            self._publish_plan(selected, soc, target, deadline, warning=warning)
-            self._set_mode(mode_for_current_slot(selected))
-            return
+            return _OptimizeResult(
+                slots=selected,
+                mode=mode_for_current_slot(selected),
+                warning=warning,
+                immediate_kwh=immediate_kwh,
+                energy_needed_kwh=energy_needed_kwh,
+            )
 
         selected = select_slots(candidates, energy_needed_kwh, immediate_kwh=immediate_kwh)
 
@@ -226,9 +233,23 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
             f"planned={sum(s['energy_kwh'] for s in selected):.1f} kWh  "
             f"current mode -> {mode}"
         )
-        self._publish_plan(selected, soc, target, deadline)
-        self._set_mode(mode)
-        self._schedule_threshold_timer(immediate_kwh, energy_needed_kwh)
+        return _OptimizeResult(
+            slots=selected,
+            mode=mode,
+            immediate_kwh=immediate_kwh,
+            energy_needed_kwh=energy_needed_kwh,
+        )
+
+    def _fetch_forecast(self) -> dict:
+        """Fetch solar forecast, returning an empty dict on any failure."""
+        try:
+            return solar_forecast.fetch_forecast()
+        except solar_forecast.SolarForecastError as exc:
+            self.log(
+                f"Solar forecast failed: {exc} — continuing without solar data",
+                level="WARNING",
+            )
+            return {}
 
     def _schedule_threshold_timer(self, immediate_kwh: float, energy_needed_kwh: float):
         """Schedule a mid-hour replan for when the nearest SoC threshold will be crossed.
@@ -317,22 +338,15 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
         )
         return estimated
 
-    def _publish_plan(
-        self,
-        selected: list,
-        soc_start: float,
-        soc_target: float,
-        deadline: datetime,
-        warning: str = "",
-    ):
-        """Write the charge plan to sensor.charge_plan and www/charge_plan.json."""
+    def _format_slots(
+        self, slots: list, soc_start: float, soc_target: float
+    ) -> tuple[list, list]:
+        """Format slots into display lines and JSON dicts for the dashboard."""
         running_soc = soc_start
         lines = []
         json_slots = []
-        for s in selected:
-            running_soc = min(
-                soc_target, running_soc + s["energy_kwh"] / self.battery_kwh * 100
-            )
+        for s in slots:
+            running_soc = min(soc_target, running_soc + s["energy_kwh"] / self.battery_kwh * 100)
             start = s.get("start_time", s["slot"])
             duration = timedelta(hours=s["energy_kwh"] / s["power_kw"])
             end = start + duration
@@ -351,18 +365,29 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
                 "energy_kwh": round(s["energy_kwh"], 1),
                 "soc_after": round(running_soc, 1),
             })
+        return lines, json_slots
 
-        plan_text = "\n".join(lines) if lines else "No charging slots planned"
-        if warning:
-            plan_text = warning + "\n\n" + plan_text
+    def _publish_plan(
+        self, result: _OptimizeResult, soc_start: float, soc_target: float, deadline: datetime
+    ):
+        """Write the charge plan to sensor.charge_plan and www/charge_plan.json."""
+        lines, json_slots = self._format_slots(result.slots, soc_start, soc_target)
+
+        if result.status:
+            plan_text = result.status
+        else:
+            plan_text = "\n".join(lines) if lines else "No charging slots planned"
+            if result.warning:
+                plan_text = result.warning + "\n\n" + plan_text
+
         self._publish_status(plan_text)
-
         self._write_plan_json(_PlanData(
             soc_start=round(soc_start, 1),
             soc_target=round(soc_target, 1),
             deadline=deadline,
             slots=json_slots,
-            warning=warning or None,
+            warning=result.warning,
+            status=result.status,
         ))
 
     def _write_plan_json(self, plan: _PlanData):
