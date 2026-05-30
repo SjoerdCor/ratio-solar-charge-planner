@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Preview</title>
+  <style>
+    :root {
+      --bg: #f5f5f5; --surface: #ffffff; --text: #1c1c1e; --muted: #8e8e93;
+      --border: #e5e5ea; --bar-bg: #e5e5ea;
+      --green: #34c759; --orange: #ff9500; --blue: #007aff; --red: #ff3b30;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000000; --surface: #1c1c1e; --text: #f2f2f7; --muted: #636366;
+        --border: #2c2c2e; --bar-bg: #2c2c2e;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg); color: var(--text); font-size: 14px;
+    }
+
+    /* ── Full dashboard mockup ── */
+    .ha-view { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; }
+    .ha-page-title {
+      font-size: 28px; font-weight: 700; margin-bottom: 24px; padding-left: 4px;
+    }
+    .ha-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+    .section-label {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;
+    }
+    .ha-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+
+    /* Entities card */
+    .entity-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 13px 16px; border-bottom: 1px solid var(--border);
+    }
+    .entity-row:last-child { border-bottom: none; }
+    .entity-name { font-size: 14px; }
+    .entity-val { font-size: 14px; font-weight: 600; text-align: right; }
+    .entity-sub { font-size: 11px; color: var(--muted); }
+    .replan-btn {
+      background: none; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--blue); font-size: 13px; font-weight: 600;
+      padding: 4px 12px; cursor: default; display: flex; align-items: center; gap: 5px;
+    }
+
+    /* Charge plan card (mirrors charge-plan.html) */
+    .plan-inner { padding: 14px; }
+    .plan-header { margin-bottom: 12px; }
+    .plan-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .plan-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+    .plan-meta strong { color: var(--text); }
+    .slot {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 7px;
+      display: grid; grid-template-columns: 100px 1fr 38px; gap: 10px; align-items: center;
+    }
+    .time { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+    .center { display: flex; flex-direction: column; gap: 5px; }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 5px;
+      font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 0.01em; width: fit-content;
+    }
+    .PureSolar  { background: var(--green); }
+    .SmartSolar { background: var(--orange); }
+    .Smart      { background: var(--blue); }
+    .bar-track { height: 5px; background: var(--bar-bg); border-radius: 3px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 3px; }
+    .soc { text-align: right; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .plan-footer { margin-top: 10px; font-size: 11px; color: var(--muted); }
+
+    /* ── Scenario grid below ── */
+    .divider { max-width: 960px; margin: 0 auto 24px; padding: 0 16px; }
+    .divider h2 { font-size: 11px; font-weight: 600; color: var(--muted);
+                  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+    .divider hr { border: none; border-top: 1px solid var(--border); }
+    .scenarios { max-width: 960px; margin: 0 auto; padding: 0 16px 40px;
+                 display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+    .scenario-label { font-size: 11px; font-weight: 600; color: var(--muted);
+                      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+<!-- ══ Full dashboard mockup ══ -->
+<div class="ha-view">
+  <div class="ha-page-title">EV Charging</div>
+  <div class="ha-sections">
+
+    <!-- Settings -->
+    <div>
+      <div class="section-label">Settings</div>
+      <div class="ha-card">
+        <div class="entity-row">
+          <span class="entity-name">Target SoC</span>
+          <span class="entity-val">80%</span>
+        </div>
+        <div class="entity-row">
+          <span class="entity-name">Charge immediately to</span>
+          <span class="entity-val">30%</span>
+        </div>
+        <div class="entity-row">
+          <span class="entity-name">Current SoC (fallback)</span>
+          <div class="entity-val">
+            <div>18%</div>
+            <div class="entity-sub">last changed: 3h ago</div>
+          </div>
+        </div>
+        <div class="entity-row">
+          <span class="entity-name">Ready by</span>
+          <span class="entity-val">Sat 31 May 06:00</span>
+        </div>
+        <div class="entity-row">
+          <span class="entity-name">Replan</span>
+          <button class="replan-btn">↻ Replan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charge plan -->
+    <div>
+      <div class="section-label">Charge plan</div>
+      <div class="ha-card" id="dashboard-plan"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ Individual scenarios ══ -->
+<div class="divider">
+  <h2>All scenarios</h2>
+  <hr>
+</div>
+<div class="scenarios" id="scenarios"></div>
+
+<script>
+  const MODE_COLOR = {
+    PureSolar: 'var(--green)', SmartSolar: 'var(--orange)', Smart: 'var(--blue)',
+  };
+
+  function fmtDeadline(iso) {
+    return new Date(iso).toLocaleString('en-GB', {
+      weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    });
+  }
+
+  function fmtTime(iso) {
+    return new Date(iso).toLocaleTimeString('en-GB', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+  }
+
+  function fmtDay(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+      weekday: 'long', day: 'numeric', month: 'long',
+    });
+  }
+
+  function slotHtml(s, target) {
+    const pct   = Math.min(100, Math.round((s.soc_after / target) * 100));
+    const color = MODE_COLOR[s.mode] || 'var(--muted)';
+    return `<div class="slot">
+  <div class="time">${s.start} – ${s.end}</div>
+  <div class="center">
+    <span class="badge ${s.mode}">${s.mode}</span>
+    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+  </div>
+  <div class="soc">${Math.round(s.soc_after)}%</div>
+</div>`;
+  }
+
+  function slotsHtml(slots, soc_target) {
+    if (!slots.length) return '';
+    const target = soc_target || 100;
+    const hasDates = slots.every(s => s.date);
+    if (!hasDates) return slots.map(s => slotHtml(s, target)).join('');
+
+    const byDate = {};
+    const dateOrder = [];
+    slots.forEach(s => {
+      if (!byDate[s.date]) { byDate[s.date] = []; dateOrder.push(s.date); }
+      byDate[s.date].push(s);
+    });
+    let html = '';
+    dateOrder.forEach((date, i) => {
+      const style = i === 0 ? ' style="margin-top:0"' : '';
+      html += `<div class="section-label"${style}>${fmtDay(date)}</div>`;
+      byDate[date].forEach(s => { html += slotHtml(s, target); });
+    });
+    return html;
+  }
+
+  function renderDashboardPlan(data) {
+    const parts = [];
+    if (data.soc_start != null) parts.push(`Current: <strong>${data.soc_start}%</strong>`);
+    if (data.soc_target != null) parts.push(`Target: <strong>${data.soc_target}%</strong>`);
+    if (data.deadline)           parts.push(`Ready by: <strong>${fmtDeadline(data.deadline)}</strong>`);
+    const slots = Array.isArray(data.slots) ? data.slots : [];
+    return `<div class="plan-inner">
+  <div class="plan-header">
+    <div class="plan-title">Charge Plan</div>
+    <div class="plan-meta">${parts.join(' &nbsp;·&nbsp; ')}</div>
+  </div>
+  ${data.warning ? `<div style="color:var(--red);font-size:13px;margin-bottom:10px">${data.warning}</div>` : ''}
+  ${slotsHtml(slots, data.soc_target)}
+  <div class="plan-footer">Updated ${fmtTime(data.updated)}</div>
+</div>`;
+  }
+
+  function renderScenario(label, data) {
+    const slots = Array.isArray(data.slots) ? data.slots : [];
+    const parts = [];
+    if (data.soc_start != null) parts.push(`Current: <strong>${data.soc_start}%</strong>`);
+    if (data.soc_target != null) parts.push(`Target: <strong>${data.soc_target}%</strong>`);
+    if (data.deadline)           parts.push(`Ready by: <strong>${fmtDeadline(data.deadline)}</strong>`);
+    return `<div>
+  <div class="scenario-label">${label}</div>
+  <div class="ha-card" style="padding:14px">
+    <div style="font-size:16px;font-weight:600;margin-bottom:6px">Charge Plan</div>
+    <div class="plan-meta" style="margin-bottom:10px">${parts.join(' &nbsp;·&nbsp; ')}</div>
+    ${data.warning ? `<div style="color:var(--red);font-size:13px;margin-bottom:10px">${data.warning}</div>` : ''}
+    ${slots.length ? slotsHtml(slots, data.soc_target) : `<div style="color:var(--muted);font-size:13px;padding:4px 0">${data.status || 'No charge plan available'}</div>`}
+    <div class="plan-footer">Updated ${fmtTime(data.updated)}</div>
+  </div>
+</div>`;
+  }
+
+  const DASHBOARD_DATA = {
+    soc_start: 18, soc_target: 80, deadline: '2025-05-31T18:00:00',
+    warning: null, updated: '2025-05-30T21:00:00',
+    slots: [
+      { start: '21:00', end: '22:00', mode: 'Smart',      effective_price: 27.0, energy_kwh: 11.0, soc_after: 32, date: '2025-05-30' },
+      { start: '22:00', end: '23:00', mode: 'Smart',      effective_price: 23.0, energy_kwh: 11.0, soc_after: 46, date: '2025-05-30' },
+      { start: '23:00', end: '23:14', mode: 'Smart',      effective_price: 23.0, energy_kwh:  2.5, soc_after: 49, date: '2025-05-30' },
+      { start: '01:00', end: '02:12', mode: 'Smart',      effective_price: 21.0, energy_kwh: 13.2, soc_after: 66, date: '2025-05-31' },
+      { start: '09:00', end: '10:00', mode: 'SmartSolar', effective_price: 11.6, energy_kwh:  1.4, soc_after: 68, date: '2025-05-31' },
+      { start: '10:00', end: '11:00', mode: 'PureSolar',  effective_price:  0.0, energy_kwh:  3.0, soc_after: 72, date: '2025-05-31' },
+      { start: '11:00', end: '12:00', mode: 'PureSolar',  effective_price:  0.0, energy_kwh:  3.0, soc_after: 76, date: '2025-05-31' },
+      { start: '12:00', end: '13:00', mode: 'PureSolar',  effective_price:  0.0, energy_kwh:  3.0, soc_after: 80, date: '2025-05-31' },
+    ],
+  };
+
+  const SCENARIOS = [
+    {
+      label: 'a) Normal plan — cheapest slots selected',
+      data: {
+        soc_start: 32, soc_target: 80, deadline: '2025-05-31T18:00:00',
+        warning: null, updated: '2025-05-30T21:00:00',
+        slots: [
+          { start: '22:00', end: '23:00', mode: 'Smart',    effective_price: 23.0, energy_kwh: 11.0, soc_after: 46, date: '2025-05-30' },
+          { start: '23:00', end: '24:00', mode: 'Smart',    effective_price: 23.0, energy_kwh: 11.0, soc_after: 60, date: '2025-05-30' },
+          { start: '10:00', end: '11:00', mode: 'PureSolar',effective_price:  0.0, energy_kwh:  3.0, soc_after: 64, date: '2025-05-31' },
+          { start: '11:00', end: '12:00', mode: 'PureSolar',effective_price:  0.0, energy_kwh:  3.0, soc_after: 68, date: '2025-05-31' },
+          { start: '12:00', end: '12:35', mode: 'Smart',    effective_price: 27.0, energy_kwh:  5.5, soc_after: 80, date: '2025-05-31' },
+        ],
+      },
+    },
+    {
+      label: 'b) Minimum SoC set — Smart first, then solar',
+      data: DASHBOARD_DATA,
+    },
+    {
+      label: 'c) Target already reached — no charging needed',
+      data: {
+        soc_start: 82, soc_target: 80, deadline: '2025-05-31T18:00:00',
+        warning: null, updated: '2025-05-30T21:00:00',
+        status: 'Target reached (82% ≥ 80%) — no charging needed',
+        slots: [],
+      },
+    },
+    {
+      label: 'd) Deadline not achievable — charging as fast as possible',
+      data: {
+        soc_start: 20, soc_target: 80, deadline: '2025-05-30T23:00:00',
+        warning: 'Deadline not achievable: 22.0 kWh available, 46.2 kWh needed. Charging as fast as possible.',
+        updated: '2025-05-30T21:00:00',
+        slots: [
+          { start: '21:00', end: '22:00', mode: 'Smart', effective_price: 27.0, energy_kwh: 11.0, soc_after: 34, date: '2025-05-30' },
+          { start: '22:00', end: '23:00', mode: 'Smart', effective_price: 23.0, energy_kwh: 11.0, soc_after: 48, date: '2025-05-30' },
+        ],
+      },
+    },
+  ];
+
+  document.getElementById('dashboard-plan').innerHTML = renderDashboardPlan(DASHBOARD_DATA);
+  document.getElementById('scenarios').innerHTML = SCENARIOS.map(s => renderScenario(s.label, s.data)).join('');
+</script>
+</body>
+</html>

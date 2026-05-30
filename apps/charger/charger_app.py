@@ -293,6 +293,7 @@ class ChargeScheduler(hass.Hass):
             json_slots.append({
                 "start": start.strftime("%H:%M"),
                 "end": end.strftime("%H:%M"),
+                "date": start.strftime("%Y-%m-%d"),
                 "mode": s["mode"],
                 "effective_price": round(s["effective_price"], 1),
                 "energy_kwh": round(s["energy_kwh"], 1),

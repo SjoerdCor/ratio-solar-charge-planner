@@ -45,6 +45,11 @@
       margin-bottom: 10px;
       display: none;
     }
+    .day-header {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      margin: 12px 0 6px;
+    }
     .slot {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -109,6 +114,28 @@
       });
     }
 
+    function fmtDay(dateStr) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+        weekday: 'long', day: 'numeric', month: 'long',
+      });
+    }
+
+    function slotHtml(s, target) {
+      const pct   = Math.min(100, Math.round((s.soc_after / target) * 100));
+      const color = MODE_COLOR[s.mode] || 'var(--muted)';
+      return `<div class="slot">
+  <div class="time">${s.start} – ${s.end}</div>
+  <div class="center">
+    <span class="badge ${s.mode}">${s.mode}</span>
+    <div class="bar-track">
+      <div class="bar-fill" style="width:${pct}%;background:${color}"></div>
+    </div>
+  </div>
+  <div class="soc">${Math.round(s.soc_after)}%</div>
+</div>`;
+    }
+
     function render(data) {
       const slots = Array.isArray(data.slots) ? data.slots : [];
 
@@ -126,31 +153,38 @@
         warnEl.style.display = 'none';
       }
 
-      const container = document.getElementById('slots');
-      if (!slots.length) {
-        container.innerHTML = `<div class="empty">${data.status || 'No charge plan available'}</div>`;
-      } else {
-        const target = data.soc_target || 100;
-        container.innerHTML = slots.map(s => {
-          const pct   = Math.min(100, Math.round((s.soc_after / target) * 100));
-          const color = MODE_COLOR[s.mode] || 'var(--muted)';
-          return `
-<div class="slot">
-  <div class="time">${s.start} – ${s.end}</div>
-  <div class="center">
-    <span class="badge ${s.mode}">${s.mode}</span>
-    <div class="bar-track">
-      <div class="bar-fill" style="width:${pct}%;background:${color}"></div>
-    </div>
-  </div>
-  <div class="soc">${Math.round(s.soc_after)}%</div>
-</div>`;
-        }).join('');
-      }
-
       if (data.updated) {
         document.getElementById('footer').textContent = `Updated ${fmtTime(data.updated)}`;
       }
+
+      const container = document.getElementById('slots');
+      if (!slots.length) {
+        container.innerHTML = `<div class="empty">${data.status || 'No charge plan available'}</div>`;
+        return;
+      }
+
+      const target = data.soc_target || 100;
+      const hasDates = slots.every(s => s.date);
+
+      if (!hasDates) {
+        container.innerHTML = slots.map(s => slotHtml(s, target)).join('');
+        return;
+      }
+
+      const byDate = {};
+      const dateOrder = [];
+      slots.forEach(s => {
+        if (!byDate[s.date]) { byDate[s.date] = []; dateOrder.push(s.date); }
+        byDate[s.date].push(s);
+      });
+
+      let html = '';
+      dateOrder.forEach((date, i) => {
+        const style = i === 0 ? ' style="margin-top:0"' : '';
+        html += `<div class="day-header"${style}>${fmtDay(date)}</div>`;
+        byDate[date].forEach(s => { html += slotHtml(s, target); });
+      });
+      container.innerHTML = html;
     }
 
     function load() {
