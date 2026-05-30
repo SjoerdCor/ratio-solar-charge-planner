@@ -14,7 +14,7 @@ views:
             show_header_toggle: false
             grid_options:
               columns: 12
-              rows: 7
+              rows: 5
             entities:
               - entity: input_number.soc_override
                 name: Current SoC (fallback)
@@ -36,7 +36,7 @@ views:
                 entity_id: input_button.replan
             grid_options:
               columns: 12
-              rows: 2
+              rows: 3
       - type: grid
         title: Charge plan
         cards:
