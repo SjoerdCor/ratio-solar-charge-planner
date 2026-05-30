@@ -371,6 +371,40 @@ class TestReplanPlanning:
 
         _assert_no_mode_set(sched)
 
+    def test_minimum_exceeds_target_raises_target_slider(self, sched, mocker):
+        # minimum=70% > target=50% → charge_target slider must be updated to 70
+        _setup_states(sched, soc="20", target="50", minimum="70")
+        mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
+
+        sched._replan()
+
+        sched.call_service.assert_any_call(
+            "input_number/set_value",
+            entity_id="input_number.charge_target",
+            value=70.0,
+        )
+
+    def test_minimum_exceeds_target_logs_warning(self, sched, mocker):
+        # minimum=70% > target=50% → warning must be logged at WARNING level
+        _setup_states(sched, soc="20", target="50", minimum="70")
+        mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
+
+        sched._replan()
+
+        warning_calls = [c for c in sched.log.call_args_list if c.kwargs.get("level") == "WARNING"]
+        assert any("target" in str(c).lower() for c in warning_calls)
+
+    def test_minimum_exceeds_target_shows_warning_in_plan(self, sched, mocker):
+        # minimum=70% > target=50% → warning must appear in the dashboard plan text
+        _setup_states(sched, soc="20", target="50", minimum="70")
+        mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
+
+        sched._replan()
+
+        args, kwargs = sched.set_state.call_args
+        plan = kwargs["attributes"]["plan"]
+        assert "target" in plan.lower()
+
 
 # ---------------------------------------------------------------------------
 # _publish_plan()

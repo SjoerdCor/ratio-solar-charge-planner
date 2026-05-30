@@ -12,7 +12,7 @@ apps/charger/ into the AppDaemon apps directory.
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -158,7 +158,24 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
 
         deadline = self._read_deadline()
         minimum = self._read_charge_minimum()
+        minimum_warning = None
+        if minimum > target:
+            minimum_warning = (
+                f"Minimum SoC ({minimum:.0f}%) exceeds target — target raised to {minimum:.0f}%"
+            )
+            self.log(minimum_warning, level="WARNING")
+            target = minimum
+            self.call_service(
+                "input_number/set_value",
+                entity_id=self.charge_target_entity,
+                value=round(target, 1),
+            )
         result = self._compute_plan(soc, target, deadline, minimum)
+        if minimum_warning:
+            result = replace(
+                result,
+                warning="\n".join(filter(None, [minimum_warning, result.warning])),
+            )
         self._publish_plan(result, soc, target, deadline)
         self._set_mode(result.mode)
         if result.energy_needed_kwh > 0:
@@ -167,7 +184,11 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
     def _compute_plan(
         self, soc: float, target: float, deadline: datetime, minimum: float
     ) -> _OptimizeResult:
-        """Compute the charge plan. Pure calculation — no HA state writes."""
+        """Compute the charge plan. Pure calculation — no HA state writes.
+
+        Precondition: minimum <= target. If the user sets minimum > target, _replan()
+        raises target to match minimum and updates the HA slider before calling here.
+        """
         immediate_kwh = max(0.0, (minimum - soc) / 100 * self.battery_kwh)
         energy_needed_kwh = (target - soc) / 100 * self.battery_kwh
         self.log(
