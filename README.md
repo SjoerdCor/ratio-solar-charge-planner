@@ -262,7 +262,7 @@ The dashboard shows when `soc_override` was last updated so you can tell whether
 
 ## Known limitations
 
-- **Solar forecast horizon**: Forecast.Solar provides today and tomorrow only. Plans beyond that window assume no solar production.
+- **Solar forecast horizon**: Forecast.Solar provides today and tomorrow with high accuracy. Days 3–7 use a rough OpenMeteo irradiance estimate, which becomes less reliable further out. The optimizer may schedule Smart charging on days that turn out to be sunny, or defer charging to days that turn out to be cloudy — but Forecast.Solar corrects this within 2 days, which is always enough time to charge.
 - **Fixed tariffs only**: Dynamic tariffs (Tibber, EPEX) are not yet supported.
 - **Charging losses not modelled**: The car's onboard charger (OBC) converts AC to DC at roughly 90–95% efficiency. The planner assumes 100%, so it may schedule one slot too few for large sessions (> 30 kWh).
 - **Concurrent household consumption**: The solar forecast reflects total panel output. If appliances are running during solar hours, less reaches the car. SmartSolar handles this at runtime (the charger tops up from the grid), but the planned effective price is slightly optimistic.
@@ -276,7 +276,7 @@ The dashboard shows when `soc_override` was last updated so you can tell whether
 - [x] Solar forecast via Forecast.Solar (today + tomorrow)
 - [x] Rolling-horizon charge planner
 - [x] AppDaemon integration
-- [ ] OpenMeteo as fallback (7 days ahead)
+- [x] OpenMeteo rough estimate for days 3–7
 - [ ] Dynamic tariff (Tibber)
 
 ---
