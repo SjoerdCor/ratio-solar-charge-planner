@@ -203,11 +203,33 @@ The dashboard is in `homeassistant/dashboard.yaml` and is linked automatically d
 
 The charge plan is also available as a mobile-friendly page at `http://homeassistant.local/local/charge-plan.html`. No login required — open it directly in any browser on your local network. The page refreshes automatically every minute.
 
-Use **Replan** to recalculate the charge plan immediately, without waiting for the next full hour.
+**Current SoC (fallback)** shows the SoC value the app uses when the real sensor is unavailable. When the sensor works, this field is kept in sync automatically. When it doesn't, you can set it manually before plugging in. The timestamp shows when it was last updated.
 
 **Charge immediately to** sets a minimum SoC that must be reached as soon as possible using grid (Smart) charging, before the optimizer takes over for the rest. Set it to the minimum you need to be able to drive, for example 30% if that covers your daily commute. Set to 0 to disable (default).
 
-**Current SoC (fallback)** shows the SoC value the app uses when the real sensor is unavailable. When the sensor works, this field is kept in sync automatically. When it doesn't, you can set it manually before plugging in. The timestamp shows when it was last updated.
+**Target SoC** sets the desired state of charge to reach by the deadline. The optimizer schedules the cheapest hours to get there in time.
+
+**Ready by** sets the deadline for the charge plan. When the deadline passes while the target SoC is not yet reached, the app switches to Smart (full grid power) and shows a warning — so you are never left with an uncharged car. It is recommended to reset the deadline automatically each morning, but only when the current deadline has already passed (so a manually set future deadline is never overwritten):
+
+```yaml
+automation:
+  - alias: Reset charge deadline to tomorrow 06:00
+    trigger:
+      - platform: time
+        at: "06:00:00"
+    condition:
+      - condition: template
+        value_template: "{{ states('input_datetime.charge_by') | as_datetime < now() }}"
+    action:
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.charge_by
+        data:
+          datetime: >
+            {{ (now() + timedelta(days=1)).strftime('%Y-%m-%d') }} 06:00:00
+```
+
+**Replan** recalculates the charge plan immediately, without waiting for the next full hour.
 
 ---
 
