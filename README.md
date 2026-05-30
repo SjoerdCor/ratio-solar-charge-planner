@@ -38,8 +38,6 @@ git clone https://github.com/sjoerdcor/ratio-solar-charge-planner.git
 
 ### Step 3 — Set up apps, helpers and dashboard (in Terminal)
 
-This step creates **one-time symlinks** so that `git pull` is enough for all future updates.
-
 ```bash
 cd /config/ratio-solar-charge-planner && git pull && \
 ln -sf /homeassistant/ratio-solar-charge-planner/apps/charger \
@@ -48,8 +46,7 @@ mkdir -p /config/packages && \
 ln -sf /config/ratio-solar-charge-planner/homeassistant/packages/charger.yaml \
    /config/packages/charger.yaml && \
 mkdir -p /config/www && \
-ln -sf /config/ratio-solar-charge-planner/www/laadplan.html \
-   /config/www/laadplan.html
+cp /config/ratio-solar-charge-planner/www/charge-plan.html /config/www/charge-plan.html
 ```
 
 Then add the following sections **once** to `/config/configuration.yaml`. If the `homeassistant:` section already exists, only add the `packages:` line.
@@ -72,7 +69,7 @@ lovelace:
       require_admin: false
 ```
 
-After restarting in Step 5, **EV Charging** appears in the sidebar. The dashboard updates automatically with every `git pull`.
+After restarting in Step 5, **EV Charging** appears in the sidebar.
 
 ### Step 4 — Fill in apps.yaml (in Terminal)
 
@@ -184,10 +181,11 @@ INFO charger: Replanning...
 ## Updates
 
 ```bash
-cd /config/ratio-solar-charge-planner && git pull
+cd /config/ratio-solar-charge-planner && git pull && \
+cp www/charge-plan.html /config/www/charge-plan.html
 ```
 
-The symlinks ensure that the app code, helpers and dashboard all update automatically. Only restart Home Assistant if there are changes to `homeassistant/packages/charger.yaml`.
+Only restart Home Assistant if there are changes to `homeassistant/packages/charger.yaml`.
 
 ---
 
@@ -199,7 +197,7 @@ The dashboard is in `homeassistant/dashboard.yaml` and is linked automatically d
 
 ### HTML dashboard
 
-The charge plan is also available as a mobile-friendly page at `http://homeassistant.local/local/laadplan.html`. No login required — open it directly in any browser on your local network. The page refreshes automatically every minute.
+The charge plan is also available as a mobile-friendly page at `http://homeassistant.local/local/charge-plan.html`. No login required — open it directly in any browser on your local network. The page refreshes automatically every minute.
 
 Use **Replan** to recalculate the charge plan immediately, without waiting for the next full hour.
 

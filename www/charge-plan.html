@@ -154,7 +154,7 @@
     }
 
     function load() {
-      fetch('/local/charge_plan.json')
+      fetch('/local/charge_plan.json', { cache: 'no-store' })
         .then(r => {
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           return r.json();
@@ -167,7 +167,7 @@
     }
 
     load();
-    setInterval(load, 60_000);
+    setInterval(load, 5_000);
   </script>
 </body>
 </html>

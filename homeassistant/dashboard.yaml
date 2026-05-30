@@ -1,23 +1,33 @@
 views:
-  - path: ev-charging
-    title: EV Charging
-    cards:
-      - type: entities
+  - type: sections
+    path: ev-charging
+    header:
+      card:
+        type: heading
+        heading_style: title
+        heading: EV Charging
+    sections:
+      - type: grid
         title: Settings
-        show_header_toggle: false
-        entities:
-          - entity: input_number.charge_target
-            name: Target SoC
-          - entity: input_number.charge_minimum
-            name: Charge immediately to
-          - entity: input_number.soc_override
-            name: Current SoC (fallback)
-            secondary_info: last-changed
-          - entity: input_datetime.charge_by
-            name: Ready by
-          - entity: input_button.replan
-            name: Replan
-            icon: mdi:refresh
-      - type: webpage
-        url: /local/laadplan.html
-        aspect_ratio: 75%
+        cards:
+          - type: entities
+            show_header_toggle: false
+            entities:
+              - entity: input_number.charge_target
+                name: Target SoC
+              - entity: input_number.charge_minimum
+                name: Charge immediately to
+              - entity: input_number.soc_override
+                name: Current SoC (fallback)
+                secondary_info: last-changed
+              - entity: input_datetime.charge_by
+                name: Ready by
+              - entity: input_button.replan
+                name: Replan
+                icon: mdi:refresh
+      - type: grid
+        title: Charge plan
+        cards:
+          - type: iframe
+            url: /local/charge-plan.html
+            aspect_ratio: 50%
