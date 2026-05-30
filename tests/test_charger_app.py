@@ -14,6 +14,7 @@ import pytest
 
 # Import after conftest.py has stubbed appdaemon
 from charger.charger_app import ChargeScheduler
+from charger.solar_forecast import SolarForecastError
 
 
 # ---------------------------------------------------------------------------
@@ -183,8 +184,8 @@ class TestReplanEarlyExits:
         sched._replan()
 
         write_json.assert_called_once()
-        kwargs = write_json.call_args[1]
-        assert "Cable not connected" in kwargs["status"]
+        plan = write_json.call_args[0][0]
+        assert "Cable not connected" in plan.status
 
     def test_soc_unavailable_publishes_status(self, sched, mocker):
         _setup_states(sched, soc="unavailable")
@@ -204,8 +205,8 @@ class TestReplanEarlyExits:
         sched._replan()
 
         write_json.assert_called_once()
-        kwargs = write_json.call_args[1]
-        assert "SoC unavailable" in kwargs["status"]
+        plan = write_json.call_args[0][0]
+        assert "SoC unavailable" in plan.status
 
     def test_soc_unknown_publishes_status(self, sched, mocker):
         _setup_states(sched, soc="unknown")
@@ -234,9 +235,9 @@ class TestReplanEarlyExits:
         sched._replan()
 
         write_json.assert_called_once()
-        kwargs = write_json.call_args[1]
-        assert kwargs["soc_start"] == pytest.approx(55.0)
-        assert "charge target unavailable" in kwargs["status"]
+        plan = write_json.call_args[0][0]
+        assert plan.soc_start == pytest.approx(55.0)
+        assert "charge target unavailable" in plan.status
 
     def test_deadline_in_past_publishes_status(self, sched, mocker):
         past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
@@ -267,9 +268,9 @@ class TestReplanEarlyExits:
         sched._replan()
 
         write_json.assert_called_once()
-        kwargs = write_json.call_args[1]
-        assert kwargs["slots"] == []
-        assert "Deadline passed" in kwargs["status"]
+        plan = write_json.call_args[0][0]
+        assert plan.slots == []
+        assert "Deadline passed" in plan.status
 
     def test_target_reached_writes_empty_plan_json(self, sched, mocker):
         _setup_states(sched, soc="85", target="80")
@@ -279,9 +280,9 @@ class TestReplanEarlyExits:
         sched._replan()
 
         write_json.assert_called_once()
-        kwargs = write_json.call_args[1]
-        assert kwargs["slots"] == []
-        assert "Target reached" in kwargs["status"]
+        plan = write_json.call_args[0][0]
+        assert plan.slots == []
+        assert "Target reached" in plan.status
 
     def test_target_already_reached_sets_pure_solar(self, sched, mocker):
         _setup_states(sched, soc="85", target="80", mode="Smart")
@@ -317,7 +318,7 @@ class TestReplanPlanning:
         _setup_states(sched, soc="25", target="80")
         mocker.patch(
             "charger.solar_forecast.fetch_forecast",
-            side_effect=RuntimeError("API error"),
+            side_effect=SolarForecastError("API error"),
         )
 
         # Should not raise; plan should be built using Smart-only candidates

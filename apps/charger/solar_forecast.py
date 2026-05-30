@@ -26,6 +26,10 @@ log = logging.getLogger(__name__)
 
 FORECAST_SOLAR_BASE = "https://api.forecast.solar/estimate"
 
+
+class SolarForecastError(Exception):
+    """Raised when a solar forecast cannot be fetched or parsed."""
+
 _state = SimpleNamespace(
     latitude=0.0,
     longitude=0.0,
@@ -106,16 +110,22 @@ def fetch_roof_plane_forecast(
 
 
 def fetch_forecast() -> Dict[str, float]:
-    """Combine all roof planes into one total forecast (kWh per period)."""
-    total: Dict[str, float] = {}
-    for plane in _state.roof_planes:
-        plane_forecast = fetch_roof_plane_forecast(
-            plane["kwp"], plane["tilt"], plane["azimuth"]
-        )
-        for ts, kwh in plane_forecast.items():
-            total[ts] = total.get(ts, 0.0) + kwh
-    log.info("Forecast ready: %d periods", len(total))
-    return total
+    """Combine all roof planes into one total forecast (kWh per period).
+
+    Raises SolarForecastError on any network, HTTP, or parsing failure.
+    """
+    try:
+        total: Dict[str, float] = {}
+        for plane in _state.roof_planes:
+            plane_forecast = fetch_roof_plane_forecast(
+                plane["kwp"], plane["tilt"], plane["azimuth"]
+            )
+            for ts, kwh in plane_forecast.items():
+                total[ts] = total.get(ts, 0.0) + kwh
+        log.info("Forecast ready: %d periods", len(total))
+        return total
+    except (requests.exceptions.RequestException, KeyError, ValueError) as exc:
+        raise SolarForecastError(str(exc)) from exc
 
 
 def power_at(timestamp: datetime) -> float:

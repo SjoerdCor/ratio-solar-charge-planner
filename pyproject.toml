@@ -16,3 +16,14 @@ dev = ["appdaemon>=4.4.0", "pytest>=8.0", "pytest-mock>=3.12"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.pylint.design]
+# AppDaemon listen_state callbacks have a fixed signature: entity, attribute, old, new, kwargs
+# — that is 5 positional args + self, so the project-wide max is raised to 6.
+max-args = 6
+max-positional-arguments = 6
+
+[tool.pylint."messages control"]
+disable = [
+    "W0613",  # unused-argument: AppDaemon callback signatures are fixed by the framework
+]

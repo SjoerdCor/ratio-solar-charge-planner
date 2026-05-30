@@ -12,6 +12,7 @@ apps/charger/ into the AppDaemon apps directory.
 """
 
 import json
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -32,10 +33,25 @@ _SESSION_ENERGY = "sensor.session_energy_kwh"
 _PLAN_JSON = Path("/homeassistant/www/charge_plan.json")
 
 
-class ChargeScheduler(hass.Hass):
-    """Manages the Ratio charger mode based on SoC, deadline and solar forecast."""
+@dataclass
+class _PlanData:
+    """All fields written to the charge-plan JSON and sensor."""
+    soc_start: float | None = None
+    soc_target: float | None = None
+    deadline: datetime | None = None
+    slots: list = field(default_factory=list)
+    warning: str | None = None
+    status: str | None = None
 
-    # AppDaemon uses initialize() instead of __init__(), so attributes are declared here.
+
+class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attributes
+    """Manages the Ratio charger mode based on SoC, deadline and solar forecast.
+
+    AppDaemon apps cannot use __init__, so all instance attributes must be declared here
+    and assigned in initialize(). This inherently produces more attributes than pylint's
+    default limit allows.
+    """
+
     soc_sensor: str
     power_sensor: str
     cable_sensor: str
@@ -106,7 +122,7 @@ class ChargeScheduler(hass.Hass):
         if self.get_state(self.cable_sensor) == "off":
             status = "Cable not connected — no charge plan calculated"
             self._publish_status(status)
-            self._write_plan_json(status=status)
+            self._write_plan_json(_PlanData(status=status))
             return
 
         soc = self._read_soc()
@@ -119,7 +135,7 @@ class ChargeScheduler(hass.Hass):
             self.log("Cannot build plan: SoC unavailable", level="WARNING")
             status = "Cannot build plan: SoC unavailable"
             self._publish_status(status)
-            self._write_plan_json(status=status)
+            self._write_plan_json(_PlanData(status=status))
             return
 
         target = self._read_charge_target()
@@ -127,7 +143,7 @@ class ChargeScheduler(hass.Hass):
             self.log("Cannot build plan: charge target unavailable", level="WARNING")
             status = "Cannot build plan: charge target unavailable"
             self._publish_status(status)
-            self._write_plan_json(soc_start=round(soc, 1), status=status)
+            self._write_plan_json(_PlanData(soc_start=round(soc, 1), status=status))
             return
 
         deadline = self._read_deadline()
@@ -137,16 +153,19 @@ class ChargeScheduler(hass.Hass):
             self.log("Deadline is in the past — no plan possible", level="WARNING")
             status = "Deadline passed — please set a new deadline"
             self._publish_status(status)
-            self._write_plan_json(
+            self._write_plan_json(_PlanData(
                 soc_start=round(soc, 1),
                 soc_target=round(target, 1),
                 deadline=deadline,
-                slots=[],
                 status=status,
-            )
+            ))
             return
 
         minimum = self._read_charge_minimum()
+        self._run_optimizer(soc, target, deadline, minimum)
+
+    def _run_optimizer(self, soc: float, target: float, deadline: datetime, minimum: float):
+        """Build and apply the charge plan; schedule a mid-hour replan when a threshold is near."""
         immediate_kwh = max(0.0, (minimum - soc) / 100 * self.battery_kwh)
         energy_needed_kwh = (target - soc) / 100 * self.battery_kwh
         self.log(
@@ -155,44 +174,30 @@ class ChargeScheduler(hass.Hass):
             + (f"  immediate={immediate_kwh:.1f} kWh" if immediate_kwh > 0 else "")
         )
 
-        self._run_optimizer(soc, target, deadline, now, energy_needed_kwh, immediate_kwh)
-
-    def _run_optimizer(
-        self,
-        soc: float,
-        target: float,
-        deadline: datetime,
-        now: datetime,
-        energy_needed_kwh: float,
-        immediate_kwh: float,
-    ):
-        """Build and apply the charge plan; schedule a mid-hour replan when a threshold is near."""
         if energy_needed_kwh <= 0:
             self.log("Target already reached — switching to PureSolar")
             status = f"Target reached ({soc:.0f}% ≥ {target:.0f}%) — no charging needed"
             self._publish_status(status)
-            self._write_plan_json(
+            self._write_plan_json(_PlanData(
                 soc_start=round(soc, 1),
                 soc_target=round(target, 1),
                 deadline=deadline,
-                slots=[],
                 status=status,
-            )
+            ))
             self._set_mode("PureSolar")
             return
 
         try:
             forecast = solar_forecast.fetch_forecast()
-        except Exception as exc:
+        except solar_forecast.SolarForecastError as exc:
             self.log(
-                f"Solar forecast failed ({type(exc).__name__}: {exc})"
-                " — continuing without solar data",
+                f"Solar forecast failed: {exc} — continuing without solar data",
                 level="WARNING",
             )
             forecast = {}
 
         candidates = build_candidates(
-            now, deadline, forecast, self.charging_power_kw, self.hourly_rates,
+            datetime.now(), deadline, forecast, self.charging_power_kw, self.hourly_rates,
         )
 
         max_kwh = max_available_energy(candidates)
@@ -306,7 +311,8 @@ class ChargeScheduler(hass.Hass):
 
         estimated = min(100.0, base_soc + session_kwh / self.battery_kwh * 100)
         self.log(
-            f"SoC sensor unavailable — override {base_soc:.0f}% + {session_kwh:.2f} kWh session = {estimated:.0f}%",
+            f"SoC sensor unavailable — override {base_soc:.0f}%"
+            f" + {session_kwh:.2f} kWh session = {estimated:.0f}%",
             level="WARNING",
         )
         return estimated
@@ -351,37 +357,29 @@ class ChargeScheduler(hass.Hass):
             plan_text = warning + "\n\n" + plan_text
         self._publish_status(plan_text)
 
-        self._write_plan_json(
+        self._write_plan_json(_PlanData(
             soc_start=round(soc_start, 1),
             soc_target=round(soc_target, 1),
             deadline=deadline,
             slots=json_slots,
             warning=warning or None,
-        )
+        ))
 
-    def _write_plan_json(
-        self,
-        soc_start: float | None = None,
-        soc_target: float | None = None,
-        deadline: datetime | None = None,
-        slots: list | None = None,
-        warning: str | None = None,
-        status: str | None = None,
-    ):
+    def _write_plan_json(self, plan: _PlanData):
         """Write the charge plan as JSON to /homeassistant/www/ for the HTML dashboard."""
         data = {
-            "soc_start": soc_start,
-            "soc_target": soc_target,
-            "deadline": deadline.isoformat(timespec="seconds") if deadline is not None else None,
-            "warning": warning,
-            "status": status,
+            "soc_start": plan.soc_start,
+            "soc_target": plan.soc_target,
+            "deadline": plan.deadline.isoformat(timespec="seconds") if plan.deadline else None,
+            "warning": plan.warning,
+            "status": plan.status,
             "updated": datetime.now().isoformat(timespec="seconds"),
-            "slots": slots if slots is not None else [],
+            "slots": plan.slots,
         }
         try:
             _PLAN_JSON.parent.mkdir(parents=True, exist_ok=True)
             _PLAN_JSON.write_text(json.dumps(data), encoding="utf-8")
-        except Exception as exc:
+        except OSError as exc:
             self.log(f"Could not write plan JSON: {exc}", level="WARNING")
 
     def _publish_status(self, text: str):
