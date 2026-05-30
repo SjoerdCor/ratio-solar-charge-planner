@@ -52,6 +52,7 @@ def sched(mocker):
     s.run_in = mocker.MagicMock()
     s.run_hourly = mocker.MagicMock()
     s.listen_state = mocker.MagicMock()
+    s.cancel_timer = mocker.MagicMock()
     s.log = mocker.MagicMock()
 
     # Attributes that initialize() sets
@@ -67,11 +68,12 @@ def sched(mocker):
     s.power_sensor = "sensor.ratio_TESTSERIAL_actual_charging_power"
     s._last_power_kw = None
     s._last_power_time = None
+    s._threshold_timer = None
 
     return s
 
 
-def _setup_states(sched, *, soc="60", target="80", deadline=None, cable="on", mode="PureSolar"):
+def _setup_states(sched, *, soc="60", target="80", deadline=None, cable="on", mode="PureSolar", minimum="0"):
     """Configure get_state to return realistic values for all entities."""
     if deadline is None:
         # Far future so deadline-in-past check never fires
@@ -83,6 +85,7 @@ def _setup_states(sched, *, soc="60", target="80", deadline=None, cable="on", mo
         "input_datetime.charge_by": deadline,
         "binary_sensor.cable": cable,
         "select.mode": mode,
+        "input_number.charge_minimum": minimum,
     }
     sched.get_state.side_effect = lambda entity_id: mapping.get(entity_id)
 
@@ -662,3 +665,103 @@ class TestOnCableDisconnect:
 
         assert sched._last_power_kw is None
         assert sched._last_power_time is None
+
+
+# ---------------------------------------------------------------------------
+# _schedule_threshold_timer()
+# ---------------------------------------------------------------------------
+
+class TestScheduleThresholdTimer:
+    def test_schedules_timer_for_minimum_soc_threshold(self, sched):
+        # 5.8 kWh at 11 kW → ~31.6 min < 60 min → timer expected
+        handle = object()
+        sched.run_in.return_value = handle
+
+        sched._schedule_threshold_timer(immediate_kwh=5.8, energy_needed_kwh=20.0)
+
+        sched.run_in.assert_called_once()
+        callback, delay = sched.run_in.call_args[0]
+        assert callback == sched._replan
+        assert 60 <= delay < 3600
+        assert sched._threshold_timer is handle
+
+    def test_schedules_timer_for_target_when_minimum_already_met(self, sched):
+        # immediate_kwh=0 → falls back to energy_needed_kwh
+        # 5.0 kWh at 11 kW → ~27 min < 60 min → timer expected
+        sched.run_in.return_value = "handle"
+
+        sched._schedule_threshold_timer(immediate_kwh=0.0, energy_needed_kwh=5.0)
+
+        sched.run_in.assert_called_once()
+
+    def test_no_timer_when_threshold_beyond_one_hour(self, sched):
+        # 15 kWh at 11 kW → ~81 min > 60 min → no timer
+        sched._schedule_threshold_timer(immediate_kwh=0.0, energy_needed_kwh=15.0)
+
+        sched.run_in.assert_not_called()
+
+    def test_delay_clamped_to_60_seconds_minimum(self, sched):
+        # 0.58 kWh at 11 kW → ~3.2 min; delay = max(60, 3.2*60 - 300) → 60 s
+        sched.run_in.return_value = "handle"
+
+        sched._schedule_threshold_timer(immediate_kwh=0.58, energy_needed_kwh=10.0)
+
+        _, delay = sched.run_in.call_args[0]
+        assert delay == 60
+
+    def test_delay_is_five_minutes_before_threshold(self, sched):
+        # 33 min threshold → 33*60 - 300 = 1980 - 300 = 1680 s
+        kwh_for_33_min = CHARGING_POWER_KW * 33 / 60
+        sched.run_in.return_value = "handle"
+
+        sched._schedule_threshold_timer(immediate_kwh=kwh_for_33_min, energy_needed_kwh=20.0)
+
+        _, delay = sched.run_in.call_args[0]
+        assert delay == pytest.approx(33 * 60 - 300, abs=1)
+
+
+# ---------------------------------------------------------------------------
+# _replan() — threshold timer integration
+# ---------------------------------------------------------------------------
+
+class TestReplanThresholdTimer:
+    def test_existing_timer_cancelled_at_start_of_replan(self, sched, mocker):
+        _setup_states(sched, soc="60", target="80")
+        mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
+        sched._threshold_timer = "fake-handle"
+
+        sched._replan()
+
+        sched.cancel_timer.assert_called_once_with("fake-handle")
+        assert sched._threshold_timer is None
+
+    def test_no_cancel_when_no_existing_timer(self, sched, mocker):
+        _setup_states(sched, soc="60", target="80")
+        mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
+
+        sched._replan()
+
+        sched.cancel_timer.assert_not_called()
+
+    def test_timer_scheduled_via_replan_when_minimum_near(self, sched, mocker):
+        # SoC=20%, minimum=30% → 5.8 kWh at 11 kW → ~31.6 min → timer
+        _setup_states(sched, soc="20", target="80", minimum="30")
+        mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
+        sched.run_in.return_value = "timer-handle"
+
+        sched._replan()
+
+        timer_calls = [c for c in sched.run_in.call_args_list if c[0][0] == sched._replan]
+        assert timer_calls, "Expected a mid-hour replan timer"
+        assert sched._threshold_timer == "timer-handle"
+
+    def test_timer_scheduled_when_target_near_and_minimum_met(self, sched, mocker):
+        # SoC=75%, target=80%, minimum=0% → 2.9 kWh at 11 kW → ~15.8 min → timer
+        _setup_states(sched, soc="75", target="80", minimum="0")
+        mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
+        sched.run_in.return_value = "timer-handle"
+
+        sched._replan()
+
+        timer_calls = [c for c in sched.run_in.call_args_list if c[0][0] == sched._replan]
+        assert timer_calls, "Expected a mid-hour replan timer when target is near"

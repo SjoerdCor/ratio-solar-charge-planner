@@ -48,6 +48,7 @@ class ChargeScheduler(hass.Hass):
     hourly_rates: dict
     _last_power_kw: float | None
     _last_power_time: datetime | None
+    _threshold_timer: str | None
 
     def initialize(self):
         """Register listeners and schedule the first plan build."""
@@ -79,6 +80,7 @@ class ChargeScheduler(hass.Hass):
 
         self._last_power_kw = None
         self._last_power_time = None
+        self._threshold_timer = None
 
         if self.get_state(self.cable_sensor) != "on":
             self._reset_session_energy()
@@ -95,6 +97,10 @@ class ChargeScheduler(hass.Hass):
 
     def _replan(self, *_args, **_kwargs):
         """Rebuild the charge plan and set the mode for the current hour."""
+        if self._threshold_timer is not None:
+            self.cancel_timer(self._threshold_timer)
+            self._threshold_timer = None
+
         self.log("Replanning...")
 
         if self.get_state(self.cable_sensor) == "off":
@@ -149,6 +155,18 @@ class ChargeScheduler(hass.Hass):
             + (f"  immediate={immediate_kwh:.1f} kWh" if immediate_kwh > 0 else "")
         )
 
+        self._run_optimizer(soc, target, deadline, now, energy_needed_kwh, immediate_kwh)
+
+    def _run_optimizer(
+        self,
+        soc: float,
+        target: float,
+        deadline: datetime,
+        now: datetime,
+        energy_needed_kwh: float,
+        immediate_kwh: float,
+    ):
+        """Build and apply the charge plan; schedule a mid-hour replan when a threshold is near."""
         if energy_needed_kwh <= 0:
             self.log("Target already reached — switching to PureSolar")
             status = f"Target reached ({soc:.0f}% ≥ {target:.0f}%) — no charging needed"
@@ -167,17 +185,14 @@ class ChargeScheduler(hass.Hass):
             forecast = solar_forecast.fetch_forecast()
         except Exception as exc:
             self.log(
-                f"Solar forecast failed ({type(exc).__name__}: {exc}) — continuing without solar data",
+                f"Solar forecast failed ({type(exc).__name__}: {exc})"
+                " — continuing without solar data",
                 level="WARNING",
             )
             forecast = {}
 
         candidates = build_candidates(
-            now,
-            deadline,
-            forecast,
-            self.charging_power_kw,
-            self.hourly_rates,
+            now, deadline, forecast, self.charging_power_kw, self.hourly_rates,
         )
 
         max_kwh = max_available_energy(candidates)
@@ -208,6 +223,23 @@ class ChargeScheduler(hass.Hass):
         )
         self._publish_plan(selected, soc, target, deadline)
         self._set_mode(mode)
+        self._schedule_threshold_timer(immediate_kwh, energy_needed_kwh)
+
+    def _schedule_threshold_timer(self, immediate_kwh: float, energy_needed_kwh: float):
+        """Schedule a mid-hour replan for when the nearest SoC threshold will be crossed.
+
+        Uses the minimum SoC threshold first (if not yet reached), otherwise the charge
+        target. Fires 5 minutes before the estimated crossing; clamped to at least 60 s.
+        """
+        threshold_kwh = immediate_kwh if immediate_kwh > 0 else energy_needed_kwh
+        time_to_threshold_sec = threshold_kwh / self.charging_power_kw * 3600
+        if time_to_threshold_sec < 3600:
+            delay = max(60, time_to_threshold_sec - 300)
+            self._threshold_timer = self.run_in(self._replan, delay)
+            self.log(
+                f"SoC threshold in ~{time_to_threshold_sec / 60:.0f} min"
+                f" — replan in {delay / 60:.0f} min"
+            )
 
     def _on_power_change(self, entity, attribute, old, new, kwargs):
         """Accumulate session energy from every power sensor update (Riemann sum)."""
