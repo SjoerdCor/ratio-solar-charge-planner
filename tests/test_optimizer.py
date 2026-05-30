@@ -58,6 +58,20 @@ class TestBuildCandidates:
         first = next(c for c in result if c["slot"] == datetime(2025, 6, 1, 14, 0))
         assert first["energy_kwh"] == pytest.approx(POWER * 15 / 60)
 
+    def test_first_slot_start_time_equals_now(self):
+        now_with_minutes = datetime(2025, 6, 1, 14, 45)
+        deadline = datetime(2025, 6, 1, 16, 0)
+        result = build_candidates(now_with_minutes, deadline, {}, POWER, HOURLY_RATES)
+        first = next(c for c in result if c["slot"] == datetime(2025, 6, 1, 14, 0))
+        assert first["start_time"] == now_with_minutes
+
+    def test_full_slot_start_time_equals_slot(self):
+        now_on_hour = datetime(2025, 6, 1, 14, 0)
+        deadline = datetime(2025, 6, 1, 16, 0)
+        result = build_candidates(now_on_hour, deadline, {}, POWER, HOURLY_RATES)
+        first = next(c for c in result if c["slot"] == now_on_hour)
+        assert first["start_time"] == now_on_hour
+
     def test_no_solar_produces_only_smart_candidates(self):
         deadline = NOW + timedelta(hours=3)
         result = build_candidates(NOW, deadline, {}, POWER, HOURLY_RATES)

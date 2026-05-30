@@ -65,6 +65,7 @@ def build_candidates(
             candidates.append(
                 {
                     "slot": slot,
+                    "start_time": slot_start,
                     "mode": "PureSolar",
                     "effective_price": 0.0,
                     "power_kw": power_kw,
@@ -77,6 +78,7 @@ def build_candidates(
             candidates.append(
                 {
                     "slot": slot,
+                    "start_time": slot_start,
                     "mode": "SmartSolar",
                     "effective_price": (grid_kw * rate) / MIN_CHARGING_KW,
                     "power_kw": MIN_CHARGING_KW,
@@ -87,6 +89,7 @@ def build_candidates(
         candidates.append(
             {
                 "slot": slot,
+                "start_time": slot_start,
                 "mode": "Smart",
                 "effective_price": rate,
                 "power_kw": charging_power_kw,

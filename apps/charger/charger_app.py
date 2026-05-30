@@ -281,16 +281,17 @@ class ChargeScheduler(hass.Hass):
             running_soc = min(
                 soc_target, running_soc + s["energy_kwh"] / self.battery_kwh * 100
             )
+            start = s.get("start_time", s["slot"])
             duration = timedelta(hours=s["energy_kwh"] / s["power_kw"])
-            end = s["slot"] + duration
+            end = start + duration
             lines.append(
-                f"{s['slot'].strftime('%H:%M')}-{end.strftime('%H:%M')}"
+                f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}"
                 f"  {s['mode']}"
                 f"  {s['effective_price']:.1f} ct/kWh"
                 f"  -> {running_soc:.0f}% (+{s['energy_kwh']:.1f} kWh)"
             )
             json_slots.append({
-                "start": s["slot"].strftime("%H:%M"),
+                "start": start.strftime("%H:%M"),
                 "end": end.strftime("%H:%M"),
                 "mode": s["mode"],
                 "effective_price": round(s["effective_price"], 1),
