@@ -123,14 +123,14 @@ Save with `Ctrl+X → Y → Enter`.
 
 #### Register the charger power sensor
 
-The package builds a Riemann-sum energy integral from the charger's power sensor (used by the [SoC fallback](#soc-fallback)). Its entity ID contains your serial number, and the package is committed to git — so it is referenced through `secrets.yaml` rather than hardcoded. Add one line to `/config/secrets.yaml`, using the same serial you found above:
+The package builds a Riemann-sum energy integral from the charger's power sensor (used by the [SoC fallback](#soc-fallback)). Its entity ID contains your serial number, and the package is committed to git — so it is referenced through `secrets.yaml` rather than hardcoded. Look up the exact entity ID in **Settings → Developer tools → States** (search for `charging_power`), then add one line to `/config/secrets.yaml`:
 
 ```bash
 nano /config/secrets.yaml
 ```
 
 ```yaml
-charger_power_sensor: sensor.ratio_YOUR_SERIAL_actual_charging_power
+charger_power_sensor: sensor.ratio_YOUR_SERIAL_charging_power
 ```
 
 #### Configuring the panels

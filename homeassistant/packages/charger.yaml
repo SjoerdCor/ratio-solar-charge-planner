@@ -35,7 +35,7 @@ input_number:
 # Replaces the app's hand-rolled accumulation. max_sub_interval keeps the
 # integral advancing during steady charging, even when the power sensor does
 # not push a new state. The source entity id contains the (secret) serial, so
-# it is referenced via secrets.yaml — add: charger_power_sensor: sensor.ratio_<serial>_actual_charging_power
+# it is referenced via secrets.yaml — add: charger_power_sensor: sensor.ratio_<serial>_charging_power
 sensor:
   - platform: integration
     name: Charger energy total
