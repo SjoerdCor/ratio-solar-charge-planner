@@ -55,7 +55,8 @@ utility_meter:
   charger_session_energy:
     name: Charger session energy
     source: sensor.charger_energy_total
-    cycle: none
+    # No cycle: the meter never auto-resets — the app resets it explicitly
+    # via utility_meter.reset (on soc_override change and cable disconnect).
 
 input_datetime:
   charge_by:
