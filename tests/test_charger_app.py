@@ -673,13 +673,27 @@ class TestOnSocOverrideChange:
 # _schedule_threshold_timer()
 # ---------------------------------------------------------------------------
 
+def _result_with_current_slot(energy_kwh, power_kw, mode="Smart"):
+    """An _OptimizeResult whose only slot covers the current hour."""
+    now_hour = datetime.now().replace(minute=0, second=0, microsecond=0)
+    slot = {
+        "slot": now_hour,
+        "start_time": now_hour,
+        "mode": mode,
+        "effective_price": 10.0,
+        "power_kw": power_kw,
+        "energy_kwh": energy_kwh,
+    }
+    return _OptimizeResult(slots=[slot], mode=mode, energy_needed_kwh=energy_kwh)
+
+
 class TestScheduleThresholdTimer:
-    def test_schedules_timer_for_minimum_soc_threshold(self, sched):
+    def test_schedules_timer_for_partial_current_slot(self, sched):
         # 5.8 kWh at 11 kW → ~31.6 min < 60 min → timer expected
         handle = object()
         sched.run_in.return_value = handle
 
-        sched._schedule_threshold_timer(immediate_kwh=5.8, energy_needed_kwh=20.0)
+        sched._schedule_threshold_timer(_result_with_current_slot(5.8, CHARGING_POWER_KW))
 
         sched.run_in.assert_called_once()
         callback, delay = sched.run_in.call_args[0]
@@ -687,26 +701,49 @@ class TestScheduleThresholdTimer:
         assert 60 <= delay < 3600
         assert sched._threshold_timer is handle
 
-    def test_schedules_timer_for_target_when_minimum_already_met(self, sched):
-        # immediate_kwh=0 → falls back to energy_needed_kwh
-        # 5.0 kWh at 11 kW → ~27 min < 60 min → timer expected
+    def test_uses_current_slot_power_not_full_charging_power(self, sched):
+        # A small Smart top-up before solar takes over: 1.0 kWh at 1.4 kW (SmartSolar)
+        # → ~43 min → timer based on the slot's own power, not charging_power_kw.
         sched.run_in.return_value = "handle"
 
-        sched._schedule_threshold_timer(immediate_kwh=0.0, energy_needed_kwh=5.0)
+        sched._schedule_threshold_timer(
+            _result_with_current_slot(1.0, 1.4, mode="SmartSolar")
+        )
 
-        sched.run_in.assert_called_once()
+        _, delay = sched.run_in.call_args[0]
+        assert delay == pytest.approx(1.0 / 1.4 * 3600 - 300, abs=1)
 
-    def test_no_timer_when_threshold_beyond_one_hour(self, sched):
-        # 15 kWh at 11 kW → ~81 min > 60 min → no timer
-        sched._schedule_threshold_timer(immediate_kwh=0.0, energy_needed_kwh=15.0)
+    def test_no_timer_when_slot_fills_the_hour(self, sched):
+        # 11 kWh at 11 kW → exactly 60 min → no mid-hour change, hourly replan handles it
+        sched._schedule_threshold_timer(
+            _result_with_current_slot(CHARGING_POWER_KW, CHARGING_POWER_KW)
+        )
 
         sched.run_in.assert_not_called()
+
+    def test_no_timer_when_nothing_planned_this_hour(self, sched):
+        # No current slot and not racing toward the target → no timer
+        result = _OptimizeResult(slots=[], mode="PureSolar", energy_needed_kwh=20.0)
+
+        sched._schedule_threshold_timer(result)
+
+        sched.run_in.assert_not_called()
+
+    def test_deadline_passed_falls_back_to_target_at_full_power(self, sched):
+        # Deadline passed: no slots, racing Smart toward target.
+        # 5.8 kWh at 11 kW → ~31.6 min → timer
+        sched.run_in.return_value = "handle"
+        result = _OptimizeResult(slots=[], mode="Smart", energy_needed_kwh=5.8)
+
+        sched._schedule_threshold_timer(result)
+
+        sched.run_in.assert_called_once()
 
     def test_delay_clamped_to_60_seconds_minimum(self, sched):
         # 0.58 kWh at 11 kW → ~3.2 min; delay = max(60, 3.2*60 - 300) → 60 s
         sched.run_in.return_value = "handle"
 
-        sched._schedule_threshold_timer(immediate_kwh=0.58, energy_needed_kwh=10.0)
+        sched._schedule_threshold_timer(_result_with_current_slot(0.58, CHARGING_POWER_KW))
 
         _, delay = sched.run_in.call_args[0]
         assert delay == 60
@@ -716,7 +753,9 @@ class TestScheduleThresholdTimer:
         kwh_for_33_min = CHARGING_POWER_KW * 33 / 60
         sched.run_in.return_value = "handle"
 
-        sched._schedule_threshold_timer(immediate_kwh=kwh_for_33_min, energy_needed_kwh=20.0)
+        sched._schedule_threshold_timer(
+            _result_with_current_slot(kwh_for_33_min, CHARGING_POWER_KW)
+        )
 
         _, delay = sched.run_in.call_args[0]
         assert delay == pytest.approx(33 * 60 - 300, abs=1)
@@ -728,7 +767,8 @@ class TestScheduleThresholdTimer:
 
 class TestReplanThresholdTimer:
     def test_existing_timer_cancelled_at_start_of_replan(self, sched, mocker):
-        _setup_states(sched, soc="60", target="80")
+        # Target already reached → no new timer, so the reset to None is observable.
+        _setup_states(sched, soc="80", target="80")
         mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
         sched._threshold_timer = "fake-handle"
 
@@ -758,7 +798,10 @@ class TestReplanThresholdTimer:
         assert sched._threshold_timer == "timer-handle"
 
     def test_timer_scheduled_when_target_near_and_minimum_met(self, sched, mocker):
-        # SoC=75%, target=80%, minimum=0% → 2.9 kWh at 11 kW → ~15.8 min → timer
+        # SoC=75%, target=80%, minimum=0% → 2.9 kWh need. Uniform rates make the current
+        # hour the cheapest slot (ties break on earliest), so it is charged now and the
+        # partial slot triggers a timer regardless of the time of day the test runs.
+        sched.hourly_rates = {h: DAY_RATE for h in range(24)}
         _setup_states(sched, soc="75", target="80", minimum="0")
         mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
         sched.run_in.return_value = "timer-handle"

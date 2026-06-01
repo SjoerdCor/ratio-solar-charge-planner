@@ -178,12 +178,18 @@ def select_slots_forced(candidates: List[dict]) -> List[dict]:
     return sorted(_best_per_slot(candidates).values(), key=lambda c: c["slot"])
 
 
-def mode_for_current_slot(selected: List[dict], now: datetime = None) -> str:
-    """Return the planned mode for the current hour, or 'PureSolar' if nothing is scheduled."""
+def current_slot(selected: List[dict], now: datetime = None) -> dict | None:
+    """Return the planned slot covering the current hour, or None if nothing is scheduled."""
     if now is None:
         now = datetime.now()
-    current_slot = now.replace(minute=0, second=0, microsecond=0)
+    slot_start = now.replace(minute=0, second=0, microsecond=0)
     for c in selected:
-        if c["slot"] == current_slot:
-            return c["mode"]
-    return "PureSolar"
+        if c["slot"] == slot_start:
+            return c
+    return None
+
+
+def mode_for_current_slot(selected: List[dict], now: datetime = None) -> str:
+    """Return the planned mode for the current hour, or 'PureSolar' if nothing is scheduled."""
+    slot = current_slot(selected, now)
+    return slot["mode"] if slot is not None else "PureSolar"

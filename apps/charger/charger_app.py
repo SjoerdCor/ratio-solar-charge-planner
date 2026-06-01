@@ -21,6 +21,7 @@ import appdaemon.plugins.hass.hassapi as hass
 from . import solar_forecast
 from .optimizer import (
     build_candidates,
+    current_slot,
     max_available_energy,
     mode_for_current_slot,
     select_slots,
@@ -53,7 +54,6 @@ class _OptimizeResult:
     mode: str
     warning: str | None = None
     status: str | None = None
-    immediate_kwh: float = 0.0
     energy_needed_kwh: float = 0.0
 
 
@@ -176,8 +176,7 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
             )
         self._publish_plan(result, soc, target, deadline)
         self._set_mode(result.mode)
-        if result.energy_needed_kwh > 0:
-            self._schedule_threshold_timer(result.immediate_kwh, result.energy_needed_kwh)
+        self._schedule_threshold_timer(result)
 
     def _compute_plan(
         self, soc: float, target: float, deadline: datetime, minimum: float
@@ -230,7 +229,6 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
                 slots=selected,
                 mode=mode_for_current_slot(selected),
                 warning=warning,
-                immediate_kwh=immediate_kwh,
                 energy_needed_kwh=energy_needed_kwh,
             )
 
@@ -251,7 +249,6 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
         return _OptimizeResult(
             slots=selected,
             mode=mode,
-            immediate_kwh=immediate_kwh,
             energy_needed_kwh=energy_needed_kwh,
         )
 
@@ -266,27 +263,51 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
             )
             return {}
 
-    def _schedule_threshold_timer(self, immediate_kwh: float, energy_needed_kwh: float):
-        """Schedule a mid-hour replan for when the nearest SoC threshold will be crossed.
+    def _schedule_threshold_timer(self, result: _OptimizeResult):
+        """Schedule a mid-hour replan for the next expected mode change.
 
-        Uses the minimum SoC threshold first (if not yet reached), otherwise the charge
-        target. Fires 5 minutes before the estimated crossing; clamped to at least 60 s.
+        The mode changes when the energy planned for the current hour has been delivered —
+        which is the current slot's planned energy, not the energy to reach minimum or
+        target SoC. Those coincide only when charging runs continuously through the hour;
+        when the plan tops up a little via Smart and lets solar cover the rest, the switch
+        comes much earlier. Fires 5 minutes before the estimated crossing, clamped to at
+        least 60 s. No timer when nothing is planned for this hour or the change is more
+        than an hour away (the hourly replan handles the next slot).
         """
-        threshold_kwh = immediate_kwh if immediate_kwh > 0 else energy_needed_kwh
-        time_to_threshold_sec = threshold_kwh / self.charging_power_kw * 3600
+        charge = self._current_hour_charge(result)
+        if charge is None:
+            return
+        threshold_kwh, power_kw = charge
+        time_to_threshold_sec = threshold_kwh / power_kw * 3600
         if time_to_threshold_sec < 3600:
             delay = max(60, time_to_threshold_sec - 300)
             self._threshold_timer = self.run_in(self._replan, delay)
             self.log(
-                f"SoC threshold in ~{time_to_threshold_sec / 60:.0f} min"
+                f"Next mode change in ~{time_to_threshold_sec / 60:.0f} min"
                 f" — replan in {delay / 60:.0f} min"
             )
 
-    def _on_cable_disconnect(self, entity, attribute, old, new, kwargs):
+    def _current_hour_charge(self, result: _OptimizeResult) -> tuple[float, float] | None:
+        """Return the planned (energy_kwh, power_kw) for the current hour, or None.
+
+        Normally this is the current slot in the plan. When the deadline has passed there
+        are no planned slots but we charge Smart toward the target as fast as possible, so
+        fall back to the remaining energy at full charging power.
+        """
+        slot = current_slot(result.slots)
+        if slot is not None:
+            return slot["energy_kwh"], slot["power_kw"]
+        if result.mode == "Smart" and result.energy_needed_kwh > 0:
+            return result.energy_needed_kwh, self.charging_power_kw
+        return None
+
+    # AppDaemon's listen_state passes a fixed (entity, attribute, old, new, kwargs)
+    # signature; these callbacks act only on the state transition, not its details.
+    def _on_cable_disconnect(self, entity, attribute, old, new, kwargs):  # pylint: disable=unused-argument
         """Reset session energy tracking when the cable is removed."""
         self._reset_session_energy()
 
-    def _on_soc_override_change(self, entity, attribute, old, new, kwargs):
+    def _on_soc_override_change(self, entity, attribute, old, new, kwargs):  # pylint: disable=unused-argument
         """Restart the session meter whenever soc_override changes.
 
         The new override value is the ground truth as of now — whether it came from a
