@@ -29,7 +29,9 @@ from .optimizer import (
 from .tariff import parse_tariff
 
 _SOC_OVERRIDE = "input_number.soc_override"
-_SESSION_ENERGY = "sensor.session_energy_kwh"
+# utility_meter on top of the HA integration sensor (see packages/charger.yaml).
+# Holds the energy charged since it was last reset by the app.
+_SESSION_ENERGY = "sensor.charger_session_energy"
 _PLAN_JSON = Path("/homeassistant/www/charge_plan.json")
 
 
@@ -55,16 +57,17 @@ class _OptimizeResult:
     energy_needed_kwh: float = 0.0
 
 
-class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attributes
+class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attributes,too-few-public-methods
     """Manages the Ratio charger mode based on SoC, deadline and solar forecast.
 
     AppDaemon apps cannot use __init__, so all instance attributes must be declared here
     and assigned in initialize(). This inherently produces more attributes than pylint's
-    default limit allows.
+    default limit allows. Likewise, the framework only calls initialize() publicly — all
+    other logic lives in private helpers invoked from listeners and timers — so the single
+    public method is by design, not a smell.
     """
 
     soc_sensor: str
-    power_sensor: str
     cable_sensor: str
     charge_mode_select: str
     charge_target_entity: str
@@ -73,8 +76,6 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
     battery_kwh: float
     charging_power_kw: float
     hourly_rates: dict
-    _last_power_kw: float | None
-    _last_power_time: datetime | None
     _threshold_timer: str | None
 
     def initialize(self):
@@ -84,7 +85,6 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
         serial = self.args["ratio_serial"]
         self.cable_sensor = f"binary_sensor.ratio_{serial}_vehicle_connected"
         self.charge_mode_select = f"select.ratio_{serial}_charge_mode"
-        self.power_sensor = f"sensor.ratio_{serial}_actual_charging_power"
 
         self.charge_target_entity = "input_number.charge_target"
         self.charge_minimum_entity = "input_number.charge_minimum"
@@ -105,8 +105,6 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
             cache_dir=Path(__file__).parent / "cache",
         )
 
-        self._last_power_kw = None
-        self._last_power_time = None
         self._threshold_timer = None
 
         if self.get_state(self.cable_sensor) != "on":
@@ -116,8 +114,8 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
         self.run_hourly(self._replan, "00:00:00")
         self.listen_state(self._replan, "input_button.replan")
         self.listen_state(self._replan, self.cable_sensor)
-        self.listen_state(self._on_power_change, self.power_sensor)
         self.listen_state(self._on_cable_disconnect, self.cable_sensor, new="off")
+        self.listen_state(self._on_soc_override_change, _SOC_OVERRIDE)
 
         self.log("ChargeScheduler initialised")
 
@@ -284,48 +282,31 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
                 f" — replan in {delay / 60:.0f} min"
             )
 
-    def _on_power_change(self, entity, attribute, old, new, kwargs):
-        """Accumulate session energy from every power sensor update (Riemann sum)."""
-        now = datetime.now()
-        if self._last_power_time is not None and self._last_power_kw is not None:
-            elapsed_hours = (now - self._last_power_time).total_seconds() / 3600
-            energy_kwh = self._last_power_kw * elapsed_hours
-            if energy_kwh > 0:
-                try:
-                    current = float(self.get_state(_SESSION_ENERGY) or 0)
-                except (TypeError, ValueError):
-                    current = 0.0
-                self.set_state(
-                    _SESSION_ENERGY,
-                    state=round(current + energy_kwh, 3),
-                    attributes={"unit_of_measurement": "kWh", "friendly_name": "Session energy"},
-                )
-
-        if new in (None, "unavailable", "unknown"):
-            self._last_power_kw = 0.0
-        else:
-            try:
-                self._last_power_kw = float(new) / 1000  # W → kW
-            except (TypeError, ValueError):
-                self._last_power_kw = 0.0
-        self._last_power_time = now
-
     def _on_cable_disconnect(self, entity, attribute, old, new, kwargs):
         """Reset session energy tracking when the cable is removed."""
         self._reset_session_energy()
 
+    def _on_soc_override_change(self, entity, attribute, old, new, kwargs):
+        """Restart the session meter whenever soc_override changes.
+
+        The new override value is the ground truth as of now — whether it came from a
+        sensor sync or a manual correction in the dashboard. Resetting the meter here
+        keeps the fallback exact: soc_override + energy charged since this change. Without
+        it, a mid-session manual correction would double-count the energy already metered.
+        """
+        self._reset_session_energy()
+
     def _reset_session_energy(self):
-        self._last_power_kw = None
-        self._last_power_time = None
-        self.set_state(
-            _SESSION_ENERGY,
-            state=0.0,
-            attributes={"unit_of_measurement": "kWh", "friendly_name": "Session energy"},
-        )
+        """Reset the utility_meter so it counts energy from this point onward."""
+        self.call_service("utility_meter/reset", entity_id=_SESSION_ENERGY)
         self.log("Session energy reset")
 
     def _sync_soc_override(self, soc: float):
-        """Keep input_number.soc_override in sync with the real sensor."""
+        """Keep input_number.soc_override in sync with the real sensor.
+
+        The session meter is reset by _on_soc_override_change whenever this write
+        actually changes the value, so the fallback always builds on a fresh baseline.
+        """
         self.call_service(
             "input_number/set_value",
             entity_id=_SOC_OVERRIDE,

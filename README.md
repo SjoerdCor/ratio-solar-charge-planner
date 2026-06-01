@@ -121,6 +121,18 @@ charger:
 
 Save with `Ctrl+X → Y → Enter`.
 
+#### Register the charger power sensor
+
+The package builds a Riemann-sum energy integral from the charger's power sensor (used by the [SoC fallback](#soc-fallback)). Its entity ID contains your serial number, and the package is committed to git — so it is referenced through `secrets.yaml` rather than hardcoded. Add one line to `/config/secrets.yaml`, using the same serial you found above:
+
+```bash
+nano /config/secrets.yaml
+```
+
+```yaml
+charger_power_sensor: sensor.ratio_YOUR_SERIAL_actual_charging_power
+```
+
 #### Configuring the panels
 
 The app uses your home location together with the panel orientation to request an hourly solar forecast from Forecast.Solar. It reads the coordinates automatically from `zone.home` in Home Assistant — the location you set during the initial HA setup.
@@ -253,10 +265,12 @@ The app reads the current state of charge from the sensor configured as `soc_sen
 When the sensor is unavailable, the app falls back to `input_number.soc_override`:
 
 - **When the real sensor works**: `soc_override` is kept in sync automatically on every replan.
-- **When the sensor is unavailable**: the app estimates SoC from `soc_override` plus the energy charged during the current session, measured via the charger's power sensor.
+- **When the sensor is unavailable**: the app estimates SoC from `soc_override` plus the energy charged since that value was last known correct.
 - **If the sensor is never available**: set `soc_override` manually in the dashboard each time you plug in. The app tracks charging progress from that starting point.
 
 The dashboard shows when `soc_override` was last updated so you can tell whether the value is current.
+
+To estimate progress while the sensor is down, the app measures how much energy the charger has delivered since `soc_override` was last known to be correct, and adds that to the override. You can correct it at any time: if the app shows 67% but the car is really at 62%, set `soc_override` to 62 in the dashboard — tracking simply continues from the corrected value.
 
 ---
 

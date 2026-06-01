@@ -66,9 +66,6 @@ def sched(mocker):
     s.battery_kwh = BATTERY_KWH
     s.charging_power_kw = CHARGING_POWER_KW
     s.hourly_rates = {h: (NIGHT_RATE if h < 6 or h >= 22 else DAY_RATE) for h in range(24)}
-    s.power_sensor = "sensor.ratio_TESTSERIAL_actual_charging_power"
-    s._last_power_kw = None
-    s._last_power_time = None
     s._threshold_timer = None
 
     return s
@@ -147,7 +144,7 @@ class TestInitialize:
         mocker.patch("charger.solar_forecast.configure")
         _mock_zone_home(sched)
         sched.initialize()
-        # replan button, cable_sensor, power_sensor, cable_disconnect
+        # replan button, cable_sensor, cable_disconnect, soc_override
         assert sched.listen_state.call_count == 4
 
     def test_calls_solar_forecast_configure(self, sched, mocker):
@@ -619,7 +616,7 @@ class TestReadSocFallback:
 
     def test_base_soc_when_no_session_energy(self, sched):
         def _get_state(entity_id):
-            return {"input_number.soc_override": "60", "sensor.session_energy_kwh": "0"}.get(
+            return {"input_number.soc_override": "60", "sensor.charger_session_energy": "0"}.get(
                 entity_id
             )
         sched.get_state.side_effect = _get_state
@@ -628,7 +625,7 @@ class TestReadSocFallback:
     def test_adds_session_energy_to_base_soc(self, sched):
         # 5.8 kWh on 58 kWh battery = +10%
         def _get_state(entity_id):
-            return {"input_number.soc_override": "60", "sensor.session_energy_kwh": "5.8"}.get(
+            return {"input_number.soc_override": "60", "sensor.charger_session_energy": "5.8"}.get(
                 entity_id
             )
         sched.get_state.side_effect = _get_state
@@ -637,7 +634,7 @@ class TestReadSocFallback:
     def test_capped_at_100(self, sched):
         # 95% + 10 kWh / 58 kWh * 100 ≈ 95 + 17.2 → capped at 100
         def _get_state(entity_id):
-            return {"input_number.soc_override": "95", "sensor.session_energy_kwh": "10.0"}.get(
+            return {"input_number.soc_override": "95", "sensor.charger_session_energy": "10.0"}.get(
                 entity_id
             )
         sched.get_state.side_effect = _get_state
@@ -645,75 +642,31 @@ class TestReadSocFallback:
 
 
 # ---------------------------------------------------------------------------
-# _on_power_change()
-# ---------------------------------------------------------------------------
-
-class TestOnPowerChange:
-    def test_first_call_stores_power_without_accumulating(self, sched):
-        sched._on_power_change("entity", None, None, "5500", {})
-
-        sched.set_state.assert_not_called()
-        assert sched._last_power_kw == pytest.approx(5.5)
-
-    def test_watts_converted_to_kw(self, sched):
-        sched._on_power_change("entity", None, None, "11000", {})
-        assert sched._last_power_kw == pytest.approx(11.0)
-
-    def test_accumulates_energy_after_first_reading(self, sched):
-        sched._last_power_kw = 11.0
-        sched._last_power_time = datetime.now() - timedelta(hours=1)
-        sched.get_state.return_value = "0"
-
-        sched._on_power_change("entity", None, None, "5500", {})
-
-        sched.set_state.assert_called_once()
-        args, kwargs = sched.set_state.call_args
-        assert args[0] == "sensor.session_energy_kwh"
-        assert kwargs["state"] == pytest.approx(11.0, abs=0.01)
-
-    def test_zero_previous_power_does_not_accumulate(self, sched):
-        sched._last_power_kw = 0.0
-        sched._last_power_time = datetime.now() - timedelta(hours=1)
-
-        sched._on_power_change("entity", None, None, "5500", {})
-
-        sched.set_state.assert_not_called()
-
-    def test_unavailable_stored_as_zero_kw(self, sched):
-        sched._last_power_kw = 0.0
-        sched._last_power_time = datetime.now() - timedelta(minutes=1)
-        sched.get_state.return_value = "0"
-
-        sched._on_power_change("entity", None, None, "unavailable", {})
-
-        assert sched._last_power_kw == 0.0
-
-    def test_none_new_stored_as_zero_kw(self, sched):
-        sched._on_power_change("entity", None, None, None, {})
-        assert sched._last_power_kw == 0.0
-
-
-# ---------------------------------------------------------------------------
 # _on_cable_disconnect() / _reset_session_energy()
 # ---------------------------------------------------------------------------
 
 class TestOnCableDisconnect:
-    def test_resets_session_energy_sensor_to_zero(self, sched):
+    def test_resets_session_energy_via_utility_meter(self, sched):
         sched._on_cable_disconnect("entity", None, "on", "off", {})
 
-        sched.set_state.assert_called_once()
-        args, kwargs = sched.set_state.call_args
-        assert args[0] == "sensor.session_energy_kwh"
-        assert kwargs["state"] == 0.0
+        sched.call_service.assert_called_once_with(
+            "utility_meter/reset", entity_id="sensor.charger_session_energy"
+        )
 
-    def test_clears_tracking_variables(self, sched):
-        sched._last_power_kw = 11.0
-        sched._last_power_time = datetime.now()
 
-        sched._on_cable_disconnect("entity", None, "on", "off", {})
+# ---------------------------------------------------------------------------
+# _on_soc_override_change()
+# ---------------------------------------------------------------------------
 
-        assert sched._last_power_kw is None
-        assert sched._last_power_time is None
+class TestOnSocOverrideChange:
+    def test_resets_session_energy_when_override_changes(self, sched):
+        # A manual correction (e.g. 67% -> 62%) must restart the meter so the
+        # already-counted session energy is not added on top of the new baseline.
+        sched._on_soc_override_change("entity", None, "67", "62", {})
+
+        sched.call_service.assert_called_once_with(
+            "utility_meter/reset", entity_id="sensor.charger_session_energy"
+        )
 
 
 # ---------------------------------------------------------------------------

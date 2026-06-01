@@ -31,6 +31,32 @@ input_number:
     unit_of_measurement: "%"
     icon: mdi:battery
 
+# Riemann-sum integral of the charger power sensor -> cumulative energy (kWh).
+# Replaces the app's hand-rolled accumulation. max_sub_interval keeps the
+# integral advancing during steady charging, even when the power sensor does
+# not push a new state. The source entity id contains the (secret) serial, so
+# it is referenced via secrets.yaml — add: charger_power_sensor: sensor.ratio_<serial>_actual_charging_power
+sensor:
+  - platform: integration
+    name: Charger energy total
+    unique_id: charger_energy_total
+    source: !secret charger_power_sensor
+    unit_prefix: k
+    unit_time: h
+    method: trapezoidal
+    max_sub_interval:
+      minutes: 1
+    round: 3
+
+# Resettable session counter on top of the integral. The app resets it (via
+# utility_meter.reset) on cable connect/disconnect and on every successful SoC
+# sync, so the fallback can read "energy charged since SoC was last known".
+utility_meter:
+  charger_session_energy:
+    name: Charger session energy
+    source: sensor.charger_energy_total
+    cycle: none
+
 input_datetime:
   charge_by:
     name: Ready by

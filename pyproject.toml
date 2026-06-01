@@ -23,6 +23,11 @@ testpaths = ["tests"]
 max-args = 6
 max-positional-arguments = 6
 
+[tool.pylint.typecheck]
+# appdaemon is provided by the AppDaemon addon at runtime and stubbed in tests
+# (see conftest.py); it is not import-resolvable in the lint environment.
+ignored-modules = ["appdaemon", "appdaemon.plugins.hass.hassapi"]
+
 [tool.pylint."messages control"]
 disable = [
     "W0613",  # unused-argument: AppDaemon callback signatures are fixed by the framework
