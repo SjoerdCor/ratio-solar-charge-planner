@@ -14,11 +14,15 @@ from charger.optimizer import (
     select_slots,
     select_slots_forced,
 )
+from charger.tariff import TariffSchedule
 
 NIGHT = 23.0
 DAY = 27.0
 POWER = 11.0
-HOURLY_RATES = {h: (NIGHT if h < 6 or h >= 22 else DAY) for h in range(24)}
+# Same night/day pattern on every weekday, so results depend only on the hour.
+HOURLY_RATES = TariffSchedule(
+    {(d, h): (NIGHT if h < 6 or h >= 22 else DAY) for d in range(7) for h in range(24)}
+)
 
 # Fixed reference times used across tests so results are deterministic.
 NOW = datetime(2025, 6, 1, 14, 0)

@@ -162,11 +162,12 @@ The tariff format is the same as [evcc](https://docs.evcc.io/docs/reference/conf
 
 - `price` is the default price in **EUR/kWh** (so 0.27 = 27 ct/kWh).
 - `zones` is optional. Without zones the default price applies to all hours.
-- A zone overrides the default price for the specified hours:
+- A zone overrides the default price for the specified hours and/or days:
   - `hours: "6-22"` — from 06:00 to 21:59 (end hour not included)
   - `hours: "22-6"` — from 22:00 to 05:59 (crosses midnight)
+  - `days: "Mon-Fri"` — only on those weekdays (omit `days` to apply every day)
 - When zones overlap, the **first** zone wins.
-- The evcc field `days` (day-of-week per zone) is **not yet supported** — the app raises an error if you use it.
+- `days` accepts the evcc day names `Mon`–`Sun` (case-insensitive), as a single day, an inclusive range (`Mon-Fri`), or a comma list (`Sat,Sun`). A zone without `hours` covers the whole day; a zone without `days` covers the whole week. The example config shows a typical Dutch off-peak (daltarief) contract: cheaper at night on weekdays **and** all day at the weekend.
 
 For a flat rate (no night or off-peak tariff), omit `zones`:
 

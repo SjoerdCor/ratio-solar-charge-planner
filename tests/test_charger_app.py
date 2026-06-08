@@ -15,6 +15,14 @@ import pytest
 # Import after conftest.py has stubbed appdaemon
 from charger.charger_app import ChargeScheduler, _OptimizeResult
 from charger.solar_forecast import SolarForecastError
+from charger.tariff import TariffSchedule
+
+
+def _uniform_schedule(rate_by_hour) -> TariffSchedule:
+    """Build a TariffSchedule that repeats one hour→rate pattern across every day."""
+    return TariffSchedule(
+        {(day, hour): rate_by_hour(hour) for day in range(7) for hour in range(24)}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +73,7 @@ def sched(mocker):
     s.charge_by_entity = "input_datetime.charge_by"
     s.battery_kwh = BATTERY_KWH
     s.charging_power_kw = CHARGING_POWER_KW
-    s.hourly_rates = {h: (NIGHT_RATE if h < 6 or h >= 22 else DAY_RATE) for h in range(24)}
+    s.hourly_rates = _uniform_schedule(lambda h: NIGHT_RATE if h < 6 or h >= 22 else DAY_RATE)
     s._threshold_timer = None
 
     return s
@@ -128,10 +136,9 @@ class TestInitialize:
         assert sched.charge_by_entity == "input_datetime.charge_by"
         assert sched.battery_kwh == BATTERY_KWH
         assert sched.charging_power_kw == CHARGING_POWER_KW
-        assert isinstance(sched.hourly_rates, dict)
-        assert len(sched.hourly_rates) == 24
-        assert sched.hourly_rates[12] == DAY_RATE
-        assert sched.hourly_rates[23] == NIGHT_RATE
+        assert isinstance(sched.hourly_rates, TariffSchedule)
+        assert sched.hourly_rates.rate_for(datetime(2026, 6, 8, 12)) == DAY_RATE
+        assert sched.hourly_rates.rate_for(datetime(2026, 6, 8, 23)) == NIGHT_RATE
 
     def test_schedules_immediate_and_hourly_replan(self, sched, mocker):
         mocker.patch("charger.solar_forecast.configure")
@@ -801,7 +808,7 @@ class TestReplanThresholdTimer:
         # SoC=75%, target=80%, minimum=0% → 2.9 kWh need. Uniform rates make the current
         # hour the cheapest slot (ties break on earliest), so it is charged now and the
         # partial slot triggers a timer regardless of the time of day the test runs.
-        sched.hourly_rates = {h: DAY_RATE for h in range(24)}
+        sched.hourly_rates = _uniform_schedule(lambda h: DAY_RATE)
         _setup_states(sched, soc="75", target="80", minimum="0")
         mocker.patch("charger.solar_forecast.fetch_forecast", return_value={})
         sched.run_in.return_value = "timer-handle"

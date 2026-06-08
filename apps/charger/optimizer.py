@@ -10,6 +10,8 @@ Units: power in kW, energy in kWh, tariffs in ct/kWh.
 from datetime import datetime, timedelta
 from typing import Dict, List
 
+from .tariff import TariffSchedule
+
 # Minimum power (kW) the charger needs to actually charge a car.
 # SmartSolar guarantees this by drawing from the grid when PV falls short.
 # PureSolar only activates when PV production reaches this threshold.
@@ -24,13 +26,14 @@ def build_candidates(
     deadline: datetime,
     solar: Dict[str, float],
     charging_power_kw: float,
-    hourly_rates: Dict[int, float],
+    hourly_rates: TariffSchedule,
 ) -> List[dict]:
     """
     Build one candidate action per hour in the planning horizon.
 
     solar: {datetime_str: kWh} from solar_forecast.fetch_forecast().
-    hourly_rates: {hour (0–23): rate in ct/kWh} from tariff.parse_tariff().
+    hourly_rates: a TariffSchedule from tariff.parse_tariff(); rates in ct/kWh
+        depend on both the weekday and the hour of each slot.
     Returns list of dicts with keys: slot, mode, effective_price, power_kw, energy_kwh.
 
     SmartSolar charges at max(MIN_CHARGING_KW, solar_kwh); the grid covers any shortfall
@@ -56,7 +59,7 @@ def build_candidates(
         # Forecast.Solar timestamps mark the END of a period, so look up slot+1h.
         key = (slot + timedelta(hours=1)).strftime("%Y-%m-%d %H:00:00")
         solar_kwh = solar.get(key, 0.0)
-        rate = hourly_rates[slot.hour]
+        rate = hourly_rates.rate_for(slot)
 
         if solar_kwh >= MIN_CHARGING_KW:
             # PV covers the minimum — PureSolar, no grid draw.

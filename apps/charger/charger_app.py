@@ -27,7 +27,7 @@ from .optimizer import (
     select_slots,
     select_slots_forced,
 )
-from .tariff import parse_tariff
+from .tariff import TariffSchedule, parse_tariff
 
 _SOC_OVERRIDE = "input_number.soc_override"
 # utility_meter on top of the HA integration sensor (see packages/charger.yaml).
@@ -75,7 +75,7 @@ class ChargeScheduler(hass.Hass):  # pylint: disable=too-many-instance-attribute
     charge_by_entity: str
     battery_kwh: float
     charging_power_kw: float
-    hourly_rates: dict
+    hourly_rates: TariffSchedule
     _threshold_timer: str | None
 
     def initialize(self):
